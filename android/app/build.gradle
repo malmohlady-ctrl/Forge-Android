@@ -4,7 +4,7 @@ android {
     namespace = "com.malmohlady.theforge"
     compileSdk = rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.malmohlady.theforge"
+        applicationId "com.malmohlady.theforge.u0test"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
