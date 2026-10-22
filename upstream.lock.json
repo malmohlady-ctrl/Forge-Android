@@ -1,0 +1,25 @@
+{
+  "_comment": "M1 harness: pinned upstream commits. The sync script builds ONLY from these SHAs \u2014 never from a moving branch. Update requires a reviewed commit changing this file.",
+  "repos": {
+    "FIT-HQ": {
+      "sha": "201aec2948d5a3eea0b2895b1d8e28b0220307a8",
+      "bundlePath": ".",
+      "repo": "malmohlady-ctrl/FIT-HQ"
+    },
+    "Couch-to-5k": {
+      "sha": "0015723c8f3b963c250799a1ff8771deb0f41202",
+      "bundlePath": "Couch-to-5k",
+      "repo": "malmohlady-ctrl/Couch-to-5k"
+    },
+    "Home-Corner": {
+      "sha": "155171603e3c198c6e484058d4c49c3496d303c5",
+      "bundlePath": "Home-Corner",
+      "repo": "malmohlady-ctrl/Home-Corner"
+    },
+    "Namastay-Home": {
+      "sha": "240442cb3065bfb1436c9280559717523837e76d",
+      "bundlePath": "Namastay-Home",
+      "repo": "malmohlady-ctrl/Namastay-Home"
+    }
+  }
+}
