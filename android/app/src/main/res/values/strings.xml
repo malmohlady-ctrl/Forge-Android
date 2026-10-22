@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">The Forge</string>
-    <string name="title_activity_main">The Forge</string>
+    <string name="app_name">Forge U0 Test</string>
+    <string name="title_activity_main">Forge U0 Test</string>
     <string name="package_name">com.malmohlady.theforge</string>
     <string name="custom_url_scheme">com.malmohlady.theforge</string>
 </resources>
