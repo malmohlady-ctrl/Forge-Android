@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>M1 Probe — diagnostics only</title>
+<style>
+  body { background:#141b2e; color:#f5eeda; font-family:system-ui; padding:16px; line-height:1.5; }
+  h1 { font-size:17px; } h2 { font-size:14px; color:#d4a72c; margin-top:22px; }
+  button, a.btn { display:inline-block; background:#1c2742; color:#f5eeda; border:1px solid #2c3a5e;
+    padding:9px 13px; border-radius:10px; font-size:14px; margin:4px 4px 4px 0; text-decoration:none; }
+  button:active, a.btn:active { background:#2c3a5e; }
+  pre { background:#10182b; border:1px solid #2c3a5e; border-radius:10px; padding:10px;
+    white-space:pre-wrap; word-break:break-all; font-size:12px; max-height:46vh; overflow:auto; }
+  .lbl { color:#a8b4d4; font-size:12px; letter-spacing:.08em; }
+</style>
+</head>
+<body>
+<h1>🧪 M1 Probe <span style="color:#a8b4d4;font-size:12px">diagnostics only — not part of the apps</span></h1>
+
+<div class="lbl">ORIGIN (observed, LS-1)</div>
+<pre id="origin">…</pre>
+
+<h2>Jump to an app (real navigation)</h2>
+<a class="btn" href="index.html">The Forge (root)</a>
+<a class="btn" href="Couch-to-5k/">Couch to 5K</a>
+<a class="btn" href="Home-Corner/">Lace Up</a>
+<a class="btn" href="Namastay-Home/">Namastay Home</a>
+<button onclick="location.reload()">Reload this page</button>
+
+<h2>Probe key (LS-1: write here, read after visiting apps)</h2>
+<button onclick="writeProbe()">Write probe key</button>
+<button onclick="dumpAll()">Dump ALL localStorage keys</button>
+<pre id="dump">No dump yet.</pre>
+
+<h2>Service workers (OFF-4: registrations as shipped)</h2>
+<button onclick="dumpSW()">List service worker registrations</button>
+<pre id="sw">Not checked yet.</pre>
+
+<script>
+document.getElementById("origin").textContent =
+  "location.origin = " + location.origin + "\nlocation.href = " + location.href +
+  "\nuserAgent = " + navigator.userAgent;
+
+function writeProbe() {
+  const v = "probe-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+  localStorage.setItem("m1probe", v);
+  document.getElementById("dump").textContent = "Wrote m1probe = " + v +
+    "\nNow visit an app via the buttons above, come back to this page, and Dump — the value must still be here, alongside that app's own keys.";
+}
+function dumpAll() {
+  const keys = Object.keys(localStorage).sort();
+  let out = "total keys: " + keys.length + "\n";
+  for (const k of keys) {
+    const v = localStorage.getItem(k) || "";
+    out += "\n• " + k + "  (" + v.length + " chars)\n  " + v.slice(0, 140).replace(/\n/g, " ") + (v.length > 140 ? "…" : "");
+  }
+  document.getElementById("dump").textContent = out;
+}
+async function dumpSW() {
+  const el = document.getElementById("sw");
+  if (!("serviceWorker" in navigator)) { el.textContent = "serviceWorker NOT supported in this WebView."; return; }
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    if (!regs.length) { el.textContent = "No registrations visible from this scope."; return; }
+    el.textContent = regs.map(r =>
+      "scope: " + r.scope + "\n  active: " + (r.active ? r.active.state : "none") +
+      "\n  installing: " + (r.installing ? r.installing.state : "none") +
+      "\n  waiting: " + (r.waiting ? r.waiting.state : "none")).join("\n\n");
+  } catch (e) { el.textContent = "getRegistrations failed: " + e; }
+}
+</script>
+</body>
+</html>
