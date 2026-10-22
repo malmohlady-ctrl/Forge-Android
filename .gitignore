@@ -5,3 +5,10 @@ android/.gradle/
 local.properties
 *.apk
 .DS_Store
+
+# M1 harness build artifacts (assembled in CI from upstream.lock.json)
+.bundle-src/
+www/Couch-to-5k/
+www/Home-Corner/
+www/Namastay-Home/
+www/probe.html
