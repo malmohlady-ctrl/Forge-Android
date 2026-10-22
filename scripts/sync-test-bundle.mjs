@@ -46,6 +46,25 @@ for (const [name, info] of Object.entries(lock.repos)) {
   console.log(`bundled ${name} @ ${info.sha.slice(0, 7)} -> www/${info.bundlePath}`);
 }
 
+// Bundle transform (M1 finding F1): Capacitor's Android server routes any
+// extensionless path to the ROOT index.html (SPA html5mode), so the hub's
+// "../<App>/" links land on a Forge page whose own assets then 404.
+// Rewriting the copies' links to name index.html explicitly fixes serving
+// without touching upstream sources or any acceptance criterion.
+for (const jsName of ["adapters.js", "app.js"]) {
+  const jsPath = path.join(www, jsName);
+  if (!existsSync(jsPath)) continue;
+  let js = readFileSync(jsPath, "utf8");
+  let n = 0;
+  for (const folder of ["Couch-to-5k", "Home-Corner", "Namastay-Home"]) {
+    const before = js;
+    js = js.split(`../${folder}/"`).join(`../${folder}/index.html"`);
+    js = js.split(`../${folder}/'`).join(`../${folder}/index.html'`);
+    if (js !== before) n++;
+  }
+  if (n) { writeFileSync(jsPath, js); console.log(`F1 transform: rewrote folder links in copied ${jsName}`); }
+}
+
 // probe page + doorway link (bundle copies only)
 cpSync(path.join(ROOT, "test-harness", "probe.html"), path.join(www, "probe.html"));
 const idx = path.join(www, "index.html");
