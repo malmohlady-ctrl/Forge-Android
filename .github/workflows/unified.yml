@@ -1,0 +1,53 @@
+name: Unified Forge — U0 Foundations APK
+
+on:
+  push:
+    branches: [u0-foundations]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-u0:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out Forge-Android (u0-foundations)
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies (lockfile-exact)
+        run: npm ci
+
+      - name: Run U0 tests (importer gauntlet + bundle hygiene)
+        run: node tests/u0_check.js
+
+      - name: Assemble the unified app into www/
+        run: node scripts/build-unified.mjs
+
+      - name: Ensure Android SDK platform 35 + build-tools 35.0.0
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-35" "build-tools;35.0.0"'
+
+      - name: Sync web assets into the Android project
+        run: npx cap sync android
+
+      - name: Build debug APK (Gradle wrapper verifies distribution checksum)
+        working-directory: android
+        run: chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Upload U0 test APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: forge-unified-u0-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
