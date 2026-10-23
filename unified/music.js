@@ -16,7 +16,7 @@
   const AUTH_URL = "https://accounts.spotify.com/authorize";
   const TOKEN_URL = "https://accounts.spotify.com/api/token";
   const DEFAULT_REDIRECT = "com.malmohlady.theforge://spotify-callback";
-  const SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing";
+  const SCOPES = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private playlist-read-collaborative";
   const PLAYLISTS = {
     train: { id: "2oOPWpO9fqJUGhjunEAj6h", label: "Train — Lace Up" },
     run: { id: "3ETB46pxe9p8uaCgji0xbY", label: "Run — Couch to 5K" },
@@ -141,7 +141,7 @@
     S.isPlaying = !!p.is_playing;
     S.shuffle = !!p.shuffle_state;
     S.repeat = p.repeat_state || "off";
-    if (p.item) { S.currentUri = p.item.uri; S.durationMs = p.item.duration_ms || 0; }
+    if (p.item) { S.currentUri = p.item.uri; S.durationMs = p.item.duration_ms || 0; S.nowTitle = p.item.name || ""; S.nowArtist = (p.item.artists || []).map((a) => a.name).join(", "); }
     S.progressMs = p.progress_ms || 0;
     S.anchorAt = Date.now();
   }
@@ -169,13 +169,24 @@
   async function loadPlaylist() {
     try {
       const r = await api("/playlists/" + playlistId() + "/tracks?limit=100&fields=items(track(uri,name,duration_ms,artists(name)))");
-      const j = r.ok ? await r.json() : { items: [] };
+      if (!r.ok) {
+        S.tracks = []; S.lastStatus = "Playlist didn't load (Spotify said " + r.status + "). Playback info still shows above.";
+        setStatus(S.lastStatus); paint(); return;
+      }
+      const j = await r.json();
       S.tracks = (j.items || []).map((it) => {
         const t = it.track || {};
         return { uri: t.uri, title: t.name || "Unknown", artist: (t.artists || []).map((a) => a.name).join(", "), duration: Math.round((t.duration_ms || 0) / 1000) };
       }).filter((t) => t.uri);
-    } catch (e) { S.tracks = []; setStatus("Couldn't load the playlist. Check your connection."); }
+      if (!S.tracks.length) { S.lastStatus = "Spotify returned an empty track list for this playlist."; setStatus(S.lastStatus); }
+    } catch (e) { S.tracks = []; S.lastStatus = "Couldn't load the playlist. Check your connection."; setStatus(S.lastStatus); }
     paint();
+  }
+  function resolveTitle() {
+    const t = S.tracks.filter((x) => x.uri === S.currentUri)[0] || null;
+    if (t) return { title: t.title, artist: t.artist };
+    if (S.nowTitle) return { title: S.nowTitle, artist: S.nowArtist || "" };
+    return { title: S.tracks.length ? "Your playlist" : "Loading…", artist: "" };
   }
   function isPlaylistContext() { return S.tracks.some((t) => t.uri === S.currentUri); }
   function playBody(uri) {
@@ -210,10 +221,10 @@
     const setup = q("fm-setup"), body = q("fm-body");
     if (!connected()) { if (setup) setup.style.display = "block"; if (body) body.style.display = "none"; return; }
     if (setup) setup.style.display = "none"; if (body) body.style.display = "";
-    const t = S.tracks.filter((x) => x.uri === S.currentUri)[0] || null;
+    const rt = resolveTitle();
     const title = q("fm-title"), artist = q("fm-artist");
-    if (title) title.textContent = t ? t.title : (S.tracks.length ? "Your playlist" : "Loading…");
-    if (artist) artist.textContent = t ? t.artist : "";
+    if (title) title.textContent = rt.title;
+    if (artist) artist.textContent = rt.artist;
     const play = q("fm-play"); if (play) play.textContent = S.isPlaying ? "⏸" : "▶";
     const sh = q("fm-shuffle"); if (sh) sh.classList.toggle("on", S.shuffle);
     const rp = q("fm-repeat");
@@ -326,7 +337,7 @@
     mount, unmount, connect, disconnect, connected, cfg,
     pause: () => { if (connected()) pausePlayback(); },
     isPlaying: () => S.isPlaying,
-    _test: { buildAuthorizeUrl, parseCallback, sha256b64url, randomStr, playBody, pickDevice, applyPlayback, migrate, store, S, refresh, api, play, pausePlayback, loadPlaylist, chooseDevice },
+    _test: { buildAuthorizeUrl, parseCallback, sha256b64url, randomStr, playBody, pickDevice, applyPlayback, migrate, store, S, refresh, api, play, pausePlayback, loadPlaylist, chooseDevice, resolveTitle },
   };
 
   /* ---------- Settings view: connection management ---------- */
