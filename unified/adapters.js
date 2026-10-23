@@ -80,7 +80,10 @@ function cornerData() {
 /* ---------- Namastay Home (namastayhome.v1) ---------- */
 function yogaData() {
   const st = readStore("namastayhome.v1");
-  const entries = (st && Array.isArray(st.completed)) ? st.completed : [];
+  const legacy = (st && Array.isArray(st.completed)) ? st.completed : [];
+  const entries = legacy.concat(nativeRecords("yoga").map(r => ({
+    key: r.key, routine: r.routine, title: r.title, date: r.date,
+    timestamp: r.timestamp, minutes: r.minutes, durationSec: r.durationSec })));
   const wk = weekDates();
   const byRoutine = {};
   let mins = 0, weekDone = 0, last = null;
