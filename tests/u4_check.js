@@ -223,3 +223,16 @@ console.log("U4 tests: " + pass + " passed");
   pass++; console.log("  ✓ voice-test lines in all three modules resolve to real clips (WebView TTS fallback flaw)");
   console.log("U4 tests incl. fix regression: " + pass + " passed");
 }
+
+/* ---------- ceremony fix regression: Settings Data buttons must not collide ---------- */
+{
+  const fsx = require("fs"), pathx = require("path"), assertx = require("assert");
+  const app = fsx.readFileSync(pathx.join(__dirname, "..", "unified", "app.js"), "utf8");
+  assertx.strictEqual((app.match(/id="dtImp"/g) || []).length, 1, "exactly one dtImp (the original Import backup button)");
+  assertx.strictEqual((app.match(/id="dtImportData"/g) || []).length, 1, "exactly one dtImportData (the U4 Import view button)");
+  assertx.ok(app.includes('$("#dtImportData"); if (dtI) dtI.onclick = () => show("import");'), "Import data binds to the Import view");
+  assertx.strictEqual((app.match(/\$\("#dtImp"\)\.onclick = \(\) => \$\("#dtFile"\)\.click\(\);/g) || []).length, 1, "original Import backup binding intact and sole");
+  assertx.ok(!app.includes('$("#dtImp"); if (dtI)'), "the colliding binding must not return");
+  pass++; console.log("  ✓ Settings Data buttons: unique ids, Import data -> Import view, original Import backup intact");
+  console.log("U4 tests incl. ceremony-fix regression: " + pass + " passed");
+}
