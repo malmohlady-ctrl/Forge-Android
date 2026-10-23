@@ -29,7 +29,11 @@ function couchEntryStatus(e) {
 }
 function couchData() {
   const st = readStore("first5k.v1");
-  const entries = (st && Array.isArray(st.completed)) ? st.completed : [];
+  const legacy = (st && Array.isArray(st.completed)) ? st.completed : [];
+  const entries = legacy.concat(nativeRecords("run").map(r => ({
+    key: r.key, week: r.week, run: r.run, date: r.date, timestamp: r.timestamp,
+    minutes: r.minutes, durationSec: r.durationSec, status: r.status,
+    km: r.km, paceSec: r.paceSec, track: r.track })));
   const doneKeys = new Set(), attempts = entries.length;
   let totalKm = 0, lastDone = null, weekDone = 0;
   const wk = weekDates();
