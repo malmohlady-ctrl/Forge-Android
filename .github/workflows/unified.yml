@@ -2,7 +2,7 @@ name: Unified Forge — U0 Foundations APK
 
 on:
   push:
-    branches: [u0-foundations, u1-train, u2-run]
+    branches: [u0-foundations, u1-train, u2-run, u3-yoga]
   workflow_dispatch:
 
 permissions:
