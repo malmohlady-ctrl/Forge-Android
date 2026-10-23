@@ -2,7 +2,7 @@ name: Unified Forge — U0 Foundations APK
 
 on:
   push:
-    branches: [u0-foundations]
+    branches: [u0-foundations, u1-train]
   workflow_dispatch:
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
         run: npm ci
 
       - name: Run U0 tests (importer gauntlet + bundle hygiene)
-        run: node tests/u0_check.js
+        run: node tests/u0_check.js && node tests/u1_check.js
 
       - name: Assemble the unified app into www/
         run: node scripts/build-unified.mjs
