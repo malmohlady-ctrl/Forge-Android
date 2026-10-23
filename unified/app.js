@@ -131,7 +131,7 @@ function show(view, origin) {
   $("#topBar").style.display = view === "home" ? "none" : "block";
   ({home: renderHome, nutrition: window.renderNutrition, workouts: window.renderWorkouts,
     progress: window.renderProgress, plan: renderPlan, body: renderBody, settings: renderSettings,
-    train: window.renderTrain, run: window.renderRun, yoga: renderModuleStub, diag: window.renderDiag}[view] || renderHome)();
+    train: window.renderTrain, run: window.renderRun, yoga: window.renderYoga, diag: window.renderDiag}[view] || renderHome)();
   window.scrollTo(0, 0);
 }
 function hubGo(view, ev) {
@@ -162,7 +162,7 @@ function goBack() {
 }
 if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
   window.Capacitor.Plugins.App.addListener("backButton", () => {
-    if ((window.TrainSession && window.TrainSession.active()) || (window.RunSession && window.RunSession.active())) return; // [U1/U2] Back is a no-op mid-session
+    if ((window.TrainSession && window.TrainSession.active()) || (window.RunSession && window.RunSession.active()) || (window.YogaSession && window.YogaSession.active())) return; // [U1/U2/U3] Back is a no-op mid-session
     if (curView === "home") window.Capacitor.Plugins.App.exitApp();
     else goBack();
   });
