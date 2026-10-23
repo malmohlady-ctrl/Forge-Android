@@ -27,14 +27,19 @@ function couchEntryStatus(e) {
   const planned = COUCH_PLANNED[e.week] || 1800;       // legacy inference (Part 7)
   return (e.durationSec || 0) >= 0.85 * planned ? "completed" : "partial";
 }
-function couchData() {
-  const st = readStore("first5k.v1");
-  const legacy = (st && Array.isArray(st.completed)) ? st.completed : [];
-  const entries = legacy.concat(nativeRecords("run").map(r => ({
+/* [U4] a DB.imported run record -> a couch entry (single mapping, used by
+   couchData AND the import dry-run preview so they can never drift). */
+function couchEntryFromRecord(r) {
+  return {
     key: r.key, week: r.week, run: r.run, date: r.date, timestamp: r.timestamp,
     minutes: r.minutes, durationSec: r.durationSec, status: r.status,
-    km: r.km, paceSec: r.paceSec, track: r.track })));
-  const doneKeys = new Set(), attempts = entries.length;
+    km: r.km, paceSec: r.paceSec, track: r.track };
+}
+/* [U4] programme progress from an entries list — couchData's own logic,
+   extracted verbatim so the import preview is computed by the same code
+   that will judge the result after commit. */
+function couchProgressFrom(entries) {
+  const doneKeys = new Set();
   let totalKm = 0, lastDone = null, weekDone = 0;
   const wk = weekDates();
   for (const e of entries) {
@@ -47,8 +52,15 @@ function couchData() {
   let next = null;
   outer: for (let w = 0; w < 9; w++) for (let r = 0; r < 3; r++)
     if (!doneKeys.has((w + 1) + "-" + (r + 1))) { next = {w, r}; break outer; }
-  return {available: !!st, attempts, done: doneKeys.size, total: 27, pct: Math.round(doneKeys.size / 27 * 100),
-    totalKm: Math.round(totalKm * 10) / 10, lastDone, next, weekDone, entries};
+  return { doneKeys, done: doneKeys.size, totalKm: Math.round(totalKm * 10) / 10, lastDone, next, weekDone };
+}
+function couchData() {
+  const st = readStore("first5k.v1");
+  const legacy = (st && Array.isArray(st.completed)) ? st.completed : [];
+  const entries = legacy.concat(nativeRecords("run").map(couchEntryFromRecord));
+  const pr = couchProgressFrom(entries);
+  return {available: !!st, attempts: entries.length, done: pr.done, total: 27, pct: Math.round(pr.done / 27 * 100),
+    totalKm: pr.totalKm, lastDone: pr.lastDone, next: pr.next, weekDone: pr.weekDone, entries};
 }
 
 /* ---------- Home Corner (basementbelt.v1) ---------- */
