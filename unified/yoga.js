@@ -351,6 +351,7 @@ const CLIPS={
         <input type="range" id="ygRate" min="0.7" max="1.3" step="0.05" value="${Number(prefs().rate) || .92}" style="width:100%">
         <button class="btn sm" id="ygVoiceTest" style="margin-top:8px">Test voice</button>
       </div>
+      <div id="ygMusic"></div>
       <h3 class="yg-serif" style="margin:18px 0 10px">Routines</h3>
       <div id="ygRoutines"></div>
     </div>`;
@@ -360,6 +361,7 @@ const CLIPS={
     $("ygSkipBtn").onclick = skipStep;
     $("ygRate").addEventListener("input", (e) => { prefs().rate = +e.target.value; $("ygRateLabel").textContent = prefs().rate.toFixed(2); saveDB(); });
     $("ygVoiceTest").addEventListener("click", () => speak("Breathe in… and breathe out. Nice and easy."));
+    if (window.ForgeMusic) ForgeMusic.mount("yoga", document.getElementById("ygMusic"));
     if (started && !sessionFinished) { announceStep(true); syncYogaControls(); }
     else if (sessionFinished) { if ($("ygPhase")) $("ygPhase").textContent = "Session complete"; syncYogaControls(); paintRoutines(); }
     else loadRoutine();
