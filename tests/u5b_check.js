@@ -46,10 +46,11 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
   ok("device picking: active first, then smartphone, then first, none -> null");
 
   // playback-state application
-  T.applyPlayback({ device: { id: "dev9" }, is_playing: true, shuffle_state: true, repeat_state: "track", progress_ms: 42000, item: { uri: "spotify:track:T2", duration_ms: 201000 } });
+  T.applyPlayback({ device: { id: "dev9", name: "Malcolm's Phone" }, context: { uri: "spotify:playlist:PLX", type: "playlist" }, is_playing: true, shuffle_state: true, repeat_state: "track", progress_ms: 42000, item: { uri: "spotify:track:T2", duration_ms: 201000 } });
+  assert.strictEqual(S.deviceName, "Malcolm's Phone"); assert.strictEqual(S.contextUri, "spotify:playlist:PLX");
   assert.strictEqual(S.deviceId, "dev9"); assert.strictEqual(S.isPlaying, true); assert.strictEqual(S.shuffle, true);
   assert.strictEqual(S.repeat, "track"); assert.strictEqual(S.currentUri, "spotify:track:T2"); assert.strictEqual(S.durationMs, 201000); assert.strictEqual(S.progressMs, 42000);
-  ok("applyPlayback maps the /me/player payload onto player state");
+  ok("applyPlayback maps the /me/player payload onto player state (+ device/context telemetry)");
 
   // live request construction through a stubbed fetch (tokens seeded above)
   lsData["spotify.music.cfg"] = JSON.stringify({ clientId: "cid", redirectUri: "com.malmohlady.theforge://spotify-callback" });
