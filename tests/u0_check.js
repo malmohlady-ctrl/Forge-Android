@@ -6,9 +6,9 @@ const { importLegacy, restoreBackup } = require(path.join(U, "importer.js"));
 
 const FIXTURE = {
   first5k: { completed: [
-    { key: "1-1", date: "2026-10-01", timestamp: 1750000001000, minutes: 30, durationSec: 1800, status: "completed" },
-    { key: "1-2", date: "2026-10-03", timestamp: 1750000002000, minutes: 31, durationSec: 1860, status: "completed" },
-    { key: "1-3", date: "2026-10-05", timestamp: 1750000003000, minutes: 12, durationSec: 720, status: "partial" },
+    { key: "1-1", week: 0, run: 0, date: "2026-10-01", timestamp: 1750000001000, minutes: 30, durationSec: 1800, status: "completed" },
+    { key: "1-2", week: 0, run: 1, date: "2026-10-03", timestamp: 1750000002000, minutes: 31, durationSec: 1860, status: "completed" },
+    { key: "1-3", week: 0, run: 2, date: "2026-10-05", timestamp: 1750000003000, minutes: 12, durationSec: 720, status: "partial" },
   ] },
   basementbelt: { completed: [
     { module: "laceup", name: "Lace Up", date: "2026-10-02", timestamp: 1750000101000, minutes: 46, durationSec: 2784 },
@@ -45,7 +45,7 @@ ok("conflict (same ID, changed content) reported, original kept", () => {
 });
 ok("corrupt fixture rejected and store untouched", () => {
   const before = JSON.stringify(db);
-  assert.throws(() => importLegacy(host, { first5k: { completed: "nope" } }), TypeError);
+  assert.throws(() => importLegacy(host, { first5k: { completed: "nope" } }), /not a first5k export/);
   assert.strictEqual(JSON.stringify(db), before);
 });
 ok("restore from pre-import backup returns identical state", () => {
