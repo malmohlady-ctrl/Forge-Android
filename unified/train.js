@@ -262,7 +262,7 @@
     $("trPauseBtn").onclick = togglePause;
     $("trSkipBtn").onclick = skipStep;
     $("trRate").addEventListener("input", (e) => { prefs().rate = +e.target.value; $("trRateLabel").textContent = prefs().rate.toFixed(2); savePrefs(); });
-    $("trVoiceTest").addEventListener("click", () => speak("This is your corner coach. Let's work."));
+    $("trVoiceTest").addEventListener("click", () => speak("Dumbbell circuit complete. Guns loaded. Go rehydrate.")); // [U4 fix] the original test line has no clip in ANY version — it relied on phone TTS, which is inert in the Android WebView; the test now plays a real cornerman clip like the Run/Yoga tests do
     if (started && !sessionFinished) { announceStep(true); syncControls(); }
     else if (sessionFinished) { if ($("trPhase")) $("trPhase").textContent = "Workout complete"; syncControls(); }
     else syncControls();
