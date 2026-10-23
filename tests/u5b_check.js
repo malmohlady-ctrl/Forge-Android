@@ -72,9 +72,9 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
   assert.ok(pauseCall && pauseCall.method === "PUT");
   ok("pause(): PUT /me/player/pause");
   await T.loadPlaylist();
-  const plCall = calls.find((c) => c.url.includes("/playlists/3ETB46pxe9p8uaCgji0xbY/tracks"));
+  const plCall = calls.find((c) => c.url.includes("/playlists/3ETB46pxe9p8uaCgji0xbY/items"));
   assert.ok(plCall, "playlist tracks requested for the active module");
-  ok("loadPlaylist(): GET the module playlist's tracks");
+  ok("loadPlaylist(): GET the module playlist's items (Feb 2026 endpoint)");
 
   // now-playing title resolution: playlist match > /me item > playlist/loading
   T.applyPlayback({ device: { id: "dev9" }, is_playing: false, progress_ms: 5000, item: { uri: "spotify:track:NP", duration_ms: 200000, name: "Rich Flex", artists: [{ name: "Drake" }, { name: "21 Savage" }] } });
@@ -98,6 +98,25 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
   assert.strictEqual(S.tracks.length, 0);
   assert.ok(S.lastStatus && S.lastStatus.includes("403"), "status carries the HTTP code: " + S.lastStatus);
   ok("loadPlaylist: a Spotify refusal is surfaced with its status code, never silent");
+
+  // Feb-2026 endpoint migration: /items parses (item shape), /tracks fallback parses (track shape)
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.includes("/items")) return { ok: true, status: 200, json: async () => ({ items: [{ item: { uri: "spotify:track:I1", name: "Items Song", duration_ms: 187000, artists: [{ name: "A One" }] } }] }) };
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  S.module = "yoga";
+  await T.loadPlaylist();
+  assert.strictEqual(S.tracks.length, 1); assert.strictEqual(S.tracks[0].title, "Items Song"); assert.strictEqual(S.tracks[0].duration, 187);
+  global.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    if (u.includes("/items")) return { ok: false, status: 403, json: async () => ({}) };
+    if (u.includes("/tracks")) return { ok: true, status: 200, json: async () => ({ items: [{ track: { uri: "spotify:track:T9", name: "Legacy Song", duration_ms: 201000, artists: [{ name: "B Two" }] } }] }) };
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  await T.loadPlaylist();
+  assert.strictEqual(S.tracks.length, 1); assert.strictEqual(S.tracks[0].title, "Legacy Song");
+  ok("playlist fetch: /items primary (item shape), /tracks fallback (track shape) — Feb 2026 migration handled");
 
   // mount wiring in the three module renderers
   for (const [file, mod, mountId] of [["train.js", "train", "trMusic"], ["run.js", "run", "rnMusic"], ["yoga.js", "yoga", "ygMusic"]]) {
