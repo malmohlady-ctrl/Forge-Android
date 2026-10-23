@@ -30,7 +30,7 @@ jobs:
         run: npm ci
 
       - name: Run U0 tests (importer gauntlet + bundle hygiene)
-        run: node tests/u0_check.js && node tests/u1_check.js && node tests/u2_spike_check.js
+        run: node tests/u0_check.js && node tests/u1_check.js && node tests/u2_spike_check.js && node tests/u2_check.js
 
       - name: Assemble the unified app into www/
         run: node scripts/build-unified.mjs
