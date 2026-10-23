@@ -64,9 +64,9 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
   S.deviceId = "dev9"; S.module = "run"; S.tracks = [{ uri: "spotify:track:T2" }]; S.currentUri = null;
   await T.play("spotify:track:T2");
   const playCall = calls.find((c) => c.url.includes("/me/player/play"));
-  assert.ok(playCall && playCall.method === "PUT" && playCall.url.includes("device_id=dev9") && playCall.auth === "Bearer tok");
+  assert.ok(playCall && playCall.method === "PUT" && !playCall.url.includes("device_id") && playCall.auth === "Bearer tok", "first play attempt addresses the active device implicitly, like pause/next");
   assert.deepStrictEqual(JSON.parse(playCall.body), { context_uri: "spotify:playlist:3ETB46pxe9p8uaCgji0xbY", offset: { uri: "spotify:track:T2" } });
-  ok("play(): PUT /me/player/play?device_id with context+offset body and bearer token");
+  ok("play(): PUT /me/player/play with context+offset body and bearer token (no device_id on first attempt)");
   await T.pausePlayback();
   const pauseCall = calls.find((c) => c.url.endsWith("/me/player/pause"));
   assert.ok(pauseCall && pauseCall.method === "PUT");
@@ -135,10 +135,29 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
     S.module = "run"; S.deviceId = "dev9"; S.tracks = [{ uri: "spotify:track:T2" }]; S.currentUri = null; S.lastStatus = "";
     await T.play("spotify:track:T2");
     assert.strictEqual(bodies.length, 2, "one refused attempt + one fallback attempt");
+    // (device-retry path is exercised separately below)
     assert.ok(bodies[0].offset && bodies[0].offset.uri === "spotify:track:T2");
     assert.deepStrictEqual(bodies[1], { context_uri: "spotify:playlist:3ETB46pxe9p8uaCgji0xbY" });
     assert.ok(S.lastStatus.includes("403") && S.lastStatus.includes("Restriction violated"), "reason surfaced: " + S.lastStatus);
     console.log("  ✓ track jump refused (403 + Spotify's message) -> playlist started instead, reason shown");
+    pass++;
+  }
+
+  // play(): a 404 on the implicit-device attempt retries against a chosen device
+  {
+    const playUrls = [];
+    global.fetch = async (url, opts = {}) => {
+      const u = String(url);
+      if (u.includes("/me/player/play")) { playUrls.push(u); return playUrls.length === 1 ? { ok: false, status: 404, json: async () => ({}) } : { ok: true, status: 204, json: async () => ({}) }; }
+      if (u.includes("/me/player/devices")) return { ok: true, status: 200, json: async () => ({ devices: [{ id: "dev9", type: "Smartphone", is_active: true }] }) };
+      if (u.includes("/me/player")) return { ok: true, status: 200, json: async () => ({ device: { id: "dev9" }, is_playing: true, progress_ms: 1, item: { uri: "spotify:track:T2", duration_ms: 1000 } }) };
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    S.module = "run"; S.deviceId = null; S.tracks = [{ uri: "spotify:track:T2" }]; S.currentUri = null;
+    await T.play("spotify:track:T2");
+    assert.strictEqual(playUrls.length, 2);
+    assert.ok(!playUrls[0].includes("device_id") && playUrls[1].includes("device_id=dev9"), "implicit first, explicit device on retry: " + playUrls.join(" | "));
+    console.log("  ✓ play(): 404 on the implicit attempt retries with an explicit device_id");
     pass++;
   }
 
