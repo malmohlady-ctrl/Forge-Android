@@ -118,6 +118,30 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
   assert.strictEqual(S.tracks.length, 1); assert.strictEqual(S.tracks[0].title, "Legacy Song");
   ok("playlist fetch: /items primary (item shape), /tracks fallback (track shape) — Feb 2026 migration handled");
 
+  // track-jump refusal: falls back to starting the playlist, reason surfaced
+  {
+    const bodies = [];
+    global.fetch = async (url, opts = {}) => {
+      const u = String(url);
+      if (u.includes("/me/player/play")) {
+        bodies.push(opts.body ? JSON.parse(opts.body) : null);
+        if (opts.body && opts.body.includes("offset")) return { ok: false, status: 403, json: async () => ({ error: { status: 403, message: "Restriction violated" } }) };
+        return { ok: true, status: 204, json: async () => ({}) };
+      }
+      if (u.includes("/me/player/devices")) return { ok: true, status: 200, json: async () => ({ devices: [{ id: "dev9", type: "Smartphone", is_active: true }] }) };
+      if (u.includes("/me/player")) return { ok: true, status: 200, json: async () => ({ device: { id: "dev9" }, is_playing: true, progress_ms: 1, item: { uri: "spotify:track:T2", duration_ms: 1000 } }) };
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    S.module = "run"; S.deviceId = "dev9"; S.tracks = [{ uri: "spotify:track:T2" }]; S.currentUri = null; S.lastStatus = "";
+    await T.play("spotify:track:T2");
+    assert.strictEqual(bodies.length, 2, "one refused attempt + one fallback attempt");
+    assert.ok(bodies[0].offset && bodies[0].offset.uri === "spotify:track:T2");
+    assert.deepStrictEqual(bodies[1], { context_uri: "spotify:playlist:3ETB46pxe9p8uaCgji0xbY" });
+    assert.ok(S.lastStatus.includes("403") && S.lastStatus.includes("Restriction violated"), "reason surfaced: " + S.lastStatus);
+    console.log("  ✓ track jump refused (403 + Spotify's message) -> playlist started instead, reason shown");
+    pass++;
+  }
+
   // mount wiring in the three module renderers
   for (const [file, mod, mountId] of [["train.js", "train", "trMusic"], ["run.js", "run", "rnMusic"], ["yoga.js", "yoga", "ygMusic"]]) {
     const src = fs.readFileSync(path.join(__dirname, "..", "unified", file), "utf8");
