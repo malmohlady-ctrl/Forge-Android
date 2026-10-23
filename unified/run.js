@@ -351,6 +351,7 @@
         <input type="range" id="rnRate" min="0.7" max="1.3" step="0.05" value="${Number(prefs().rate) || .92}" style="width:100%">
         <button class="btn sm" id="rnVoiceTest" style="margin-top:8px">Test voice</button>
       </div>
+      <div id="rnMusic"></div>
       <h3 style="margin:18px 0 10px">The programme</h3>
       <div id="rnPlan"></div>
     </div>`;
@@ -363,6 +364,7 @@
     $("rnSkipBtn").onclick = skipStep;
     $("rnRate").addEventListener("input", (e) => { prefs().rate = +e.target.value; $("rnRateLabel").textContent = prefs().rate.toFixed(2); saveDB(); });
     $("rnVoiceTest").addEventListener("click", () => speak("Start running. Let's fucking go, my nigga!"));
+    if (window.ForgeMusic) ForgeMusic.mount("run", document.getElementById("rnMusic"));
     $("rnEnableLoc").addEventListener("click", async () => {
       try {
         const plug = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.GpsPerm;
