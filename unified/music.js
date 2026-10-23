@@ -166,16 +166,27 @@
     } catch (e) { S.deviceId = null; }
     return S.deviceId;
   }
+  async function fetchPlaylistTracks() {
+    // Feb 2026 migration: NEW dev-mode apps must use /playlists/{id}/items —
+    // /tracks returns 403 for them (grandfathered apps keep /tracks, which is
+    // why the web players still work). Try /items first, /tracks as fallback.
+    let r = await api("/playlists/" + playlistId() + "/items?limit=100");
+    if (r.status === 403 || r.status === 404) {
+      const r2 = await api("/playlists/" + playlistId() + "/tracks?limit=100&fields=items(track(uri,name,duration_ms,artists(name)))");
+      if (r2.ok) r = r2;
+    }
+    return r;
+  }
   async function loadPlaylist() {
     try {
-      const r = await api("/playlists/" + playlistId() + "/tracks?limit=100&fields=items(track(uri,name,duration_ms,artists(name)))");
+      const r = await fetchPlaylistTracks();
       if (!r.ok) {
         S.tracks = []; S.lastStatus = "Playlist didn't load (Spotify said " + r.status + "). Playback info still shows above.";
         setStatus(S.lastStatus); paint(); return;
       }
       const j = await r.json();
       S.tracks = (j.items || []).map((it) => {
-        const t = it.track || {};
+        const t = it.item || it.track || {};
         return { uri: t.uri, title: t.name || "Unknown", artist: (t.artists || []).map((a) => a.name).join(", "), duration: Math.round((t.duration_ms || 0) / 1000) };
       }).filter((t) => t.uri);
       if (!S.tracks.length) { S.lastStatus = "Spotify returned an empty track list for this playlist."; setStatus(S.lastStatus); }
@@ -337,7 +348,7 @@
     mount, unmount, connect, disconnect, connected, cfg,
     pause: () => { if (connected()) pausePlayback(); },
     isPlaying: () => S.isPlaying,
-    _test: { buildAuthorizeUrl, parseCallback, sha256b64url, randomStr, playBody, pickDevice, applyPlayback, migrate, store, S, refresh, api, play, pausePlayback, loadPlaylist, chooseDevice, resolveTitle },
+    _test: { buildAuthorizeUrl, parseCallback, sha256b64url, randomStr, playBody, pickDevice, applyPlayback, migrate, store, S, refresh, api, play, pausePlayback, loadPlaylist, chooseDevice, resolveTitle, fetchPlaylistTracks },
   };
 
   /* ---------- Settings view: connection management ---------- */
