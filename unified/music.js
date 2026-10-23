@@ -137,7 +137,8 @@
   const playlistId = () => (PLAYLISTS[S.module] || {}).id || "";
   function applyPlayback(p) {
     if (!p) return;
-    if (p.device) S.deviceId = p.device.id;
+    if (p.device) { S.deviceId = p.device.id; S.deviceName = p.device.name || ""; }
+    S.contextUri = (p.context && p.context.uri) || "";
     S.isPlaying = !!p.is_playing;
     S.shuffle = !!p.shuffle_state;
     S.repeat = p.repeat_state || "off";
@@ -154,7 +155,6 @@
       if (r.status === 204) { S.isPlaying = false; paint(); return; }
       if (!r.ok) return;
       applyPlayback(await r.json());
-      if (S.flash) { S.flash = false; setStatus(""); }
       paint();
     } catch (e) {}
   }
@@ -229,8 +229,25 @@
           if (r2.ok || r2.status === 204) { S.lastStatus = "Track jump refused (" + r.status + (msg ? ": " + msg : "") + ") — started the playlist instead."; setStatus(S.lastStatus); }
           else failStatus("Play", r2.status, await errText(r2));
         } else failStatus("Play", r.status, msg);
+        setTimeout(refreshPlayback, 700);
+        return;
       }
-      setTimeout(refreshPlayback, 700);
+      if (uri) {
+        // Accepted — but verify it actually took; if not, play the track directly.
+        setStatus("Play request accepted — checking…");
+        setTimeout(async () => {
+          await refreshPlayback();
+          if (S.currentUri === uri) { setStatus(""); return; }
+          try {
+            const r3 = await api("/me/player/play", "PUT", { uris: [uri] });
+            if (r3.ok || r3.status === 204) { S.lastStatus = "The playlist jump didn't take, so the track was played directly."; setStatus(S.lastStatus); setTimeout(refreshPlayback, 700); }
+            else failStatus("Direct play", r3.status, await errText(r3));
+          } catch (e) { S.lastStatus = "Direct play failed: " + e.message; setStatus(S.lastStatus); }
+        }, 1000);
+      } else {
+        setStatus("");
+        setTimeout(refreshPlayback, 700);
+      }
     } catch (e) { S.lastStatus = "Play failed: " + e.message; setStatus(S.lastStatus); }
   }
   async function pausePlayback() {
@@ -259,6 +276,8 @@
     const title = q("fm-title"), artist = q("fm-artist");
     if (title) title.textContent = rt.title;
     if (artist) artist.textContent = rt.artist;
+    const info = q("fm-info");
+    if (info) info.textContent = (S.deviceName ? "Device: " + S.deviceName : "") + (S.contextUri ? (S.deviceName ? " · " : "") + "Playing from: " + S.contextUri.replace("spotify:", "") : "");
     const play = q("fm-play"); if (play) play.textContent = S.isPlaying ? "⏸" : "▶";
     const sh = q("fm-shuffle"); if (sh) sh.classList.toggle("on", S.shuffle);
     const rp = q("fm-repeat");
@@ -272,7 +291,7 @@
         const n = document.createElement("span"); n.textContent = tr.title + (tr.artist ? " — " + tr.artist : "");
         const d = document.createElement("span"); d.textContent = tr.duration ? fmt(tr.duration) : "";
         li.appendChild(n); li.appendChild(d);
-        li.addEventListener("click", () => { play(tr.uri); S.flash = true; setStatus("Starting " + tr.title + "…"); });
+        li.addEventListener("click", () => { setStatus("Tap: " + tr.title + " — sending…"); play(tr.uri); });
         list.appendChild(li);
       }
     }
@@ -317,8 +336,9 @@
       '<div class="fm-row"><button class="fm-tog fm-shuffle">🔀 Shuffle</button><button class="fm-tog fm-repeat">🔁 All</button>' +
       '<label class="muted" style="font-size:13px">Volume <input type="range" class="fm-vol" min="0" max="100" value="90" style="vertical-align:middle"></label></div>' +
       '<div class="fm-status"></div>' +
+      '<div class="fm-info muted" style="font-size:12px;margin-top:4px"></div>' +
       '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-3</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-4</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
