@@ -76,6 +76,29 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
   assert.ok(plCall, "playlist tracks requested for the active module");
   ok("loadPlaylist(): GET the module playlist's tracks");
 
+  // now-playing title resolution: playlist match > /me item > playlist/loading
+  T.applyPlayback({ device: { id: "dev9" }, is_playing: false, progress_ms: 5000, item: { uri: "spotify:track:NP", duration_ms: 200000, name: "Rich Flex", artists: [{ name: "Drake" }, { name: "21 Savage" }] } });
+  assert.strictEqual(S.nowTitle, "Rich Flex");
+  let rt = T.resolveTitle();
+  assert.strictEqual(rt.title, "Rich Flex"); assert.strictEqual(rt.artist, "Drake, 21 Savage");
+  S.tracks = [{ uri: "spotify:track:NP", title: "Rich Flex (list)", artist: "Drake" }];
+  rt = T.resolveTitle();
+  assert.strictEqual(rt.title, "Rich Flex (list)", "playlist entry wins over the /me copy");
+  S.tracks = []; S.nowTitle = ""; S.currentUri = "spotify:track:NP";
+  assert.strictEqual(T.resolveTitle().title, "Loading…");
+  ok("title resolution: now-playing name shows even when the track list can't load");
+
+  // loadPlaylist failure surfaces the HTTP status instead of failing silently
+  global.fetch = async (url, opts = {}) => {
+    if (String(url).includes("/playlists/")) return { ok: false, status: 403, json: async () => ({}) };
+    return { ok: true, status: 200, json: async () => ({}) };
+  };
+  S.module = "train"; S.tracks = [{ uri: "x" }];
+  await T.loadPlaylist();
+  assert.strictEqual(S.tracks.length, 0);
+  assert.ok(S.lastStatus && S.lastStatus.includes("403"), "status carries the HTTP code: " + S.lastStatus);
+  ok("loadPlaylist: a Spotify refusal is surfaced with its status code, never silent");
+
   // mount wiring in the three module renderers
   for (const [file, mod, mountId] of [["train.js", "train", "trMusic"], ["run.js", "run", "rnMusic"], ["yoga.js", "yoga", "ygMusic"]]) {
     const src = fs.readFileSync(path.join(__dirname, "..", "unified", file), "utf8");
