@@ -204,8 +204,17 @@ window.renderDiag = function () {
     <h3>Importer self-test (synthetic fixtures)</h3>
     <button class="btn" onclick="ForgeDiag.runImporter()">Run importer self-test</button>
     <pre id="diagImport" style="white-space:pre-wrap;background:#10182b;padding:10px;border-radius:10px">Not run yet. Expects: import #1 adds 7 · repeat adds 0 · conflict probe reports 1 · corrupt fixture rejected · restore returns to 0.</pre>
+    <h3>GPS probe (U2 spike)</h3>
+    <p style="color:var(--muted,#a8b4d4);line-height:1.5">Location permission + live fix stream inside the WebView, judged by the original Couch rules (&gt;40 m accuracy dropped · &lt;8 m in &lt;15 s = jitter · &gt;16.7 m/s = teleport). Coordinates show only here — nothing is stored or sent anywhere.</p>
+    <button class="btn" onclick="ForgeDiag.gpsState()">Permission state</button>
+    <button class="btn" onclick="ForgeDiag.gpsRequest()">Request permission</button>
+    <button class="btn" onclick="ForgeDiag.gpsOnce()">One fix</button>
+    <button class="btn" onclick="ForgeDiag.gpsWatch()">Start / stop watch</button>
+    <pre id="diagGps" style="white-space:pre-wrap;background:#10182b;padding:10px;border-radius:10px">No GPS test yet. Lock test: start the watch, note the elapsed time, lock the phone 60 s, unlock, and read the log — fixes stamped inside the lock window mean the watch survived.</pre>
+    <pre id="diagGpsLog" style="white-space:pre-wrap;background:#10182b;padding:10px;border-radius:10px;max-height:260px;overflow:auto">Probe log is empty.</pre>
     <button class="btn block" style="margin-top:14px" onclick="show('home')">‹ Hub</button>
   </div>`;
+  if (window.ForgeDiag) ForgeDiag.gpsPaint();
 };
 let _tsy = null;
 if (typeof document.addEventListener === "function") {
