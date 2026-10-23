@@ -13,6 +13,7 @@ vm.runInThisContext(fs.readFileSync(path.join(__dirname, "..", "unified", "music
 
 let pass = 0; const ok = (name) => { pass++; console.log("  ✓ " + name); };
 const FM = window.ForgeMusic, T = FM._test, S = T.S;
+T.setVerifyDelays([0, 0]);
 
 (async () => {
   assert.strictEqual(FM.PLAYLISTS.train.id, "2oOPWpO9fqJUGhjunEAj6h");
@@ -119,7 +120,7 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
   assert.strictEqual(S.tracks.length, 1); assert.strictEqual(S.tracks[0].title, "Legacy Song");
   ok("playlist fetch: /items primary (item shape), /tracks fallback (track shape) — Feb 2026 migration handled");
 
-  // track-jump refusal: falls back to starting the playlist, reason surfaced
+  // selection ladder: context refused -> DIRECT play of the exact URI (never a bare playlist start)
   {
     const bodies = [];
     global.fetch = async (url, opts = {}) => {
@@ -133,14 +134,15 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
       if (u.includes("/me/player")) return { ok: true, status: 200, json: async () => ({ device: { id: "dev9" }, is_playing: true, progress_ms: 1, item: { uri: "spotify:track:T2", duration_ms: 1000 } }) };
       return { ok: true, status: 200, json: async () => ({}) };
     };
-    S.module = "run"; S.deviceId = "dev9"; S.tracks = [{ uri: "spotify:track:T2" }]; S.currentUri = null; S.lastStatus = "";
+    S.module = "run"; S.deviceId = "dev9"; S.tracks = [{ uri: "spotify:track:T2", title: "T2" }]; S.currentUri = null; S.lastStatus = "";
     await T.play("spotify:track:T2");
-    assert.strictEqual(bodies.length, 2, "one refused attempt + one fallback attempt");
-    // (device-retry path is exercised separately below)
-    assert.ok(bodies[0].offset && bodies[0].offset.uri === "spotify:track:T2");
-    assert.deepStrictEqual(bodies[1], { context_uri: "spotify:playlist:3ETB46pxe9p8uaCgji0xbY" });
-    assert.ok(S.lastStatus.includes("403") && S.lastStatus.includes("Restriction violated"), "reason surfaced: " + S.lastStatus);
-    console.log("  ✓ track jump refused (403 + Spotify's message) -> playlist started instead, reason shown");
+    assert.strictEqual(bodies.length, 2, "context attempt + direct attempt");
+    assert.ok(bodies[0].offset && bodies[0].offset.uri === "spotify:track:T2", "attempt A carries the exact tapped URI as offset");
+    assert.deepStrictEqual(bodies[1], { uris: ["spotify:track:T2"] }, "attempt B is a direct play of the exact same URI");
+    assert.ok(!bodies.some((b) => b && b.context_uri && !b.offset && !b.uris), "a bare playlist start is NEVER substituted for the requested song");
+    assert.strictEqual(S.lastSel.via, "direct");
+    assert.ok(S.selLog.join(" ").includes("context+offset -> 403") && S.selLog.join(" ").includes("direct -> 204"), "per-attempt statuses captured: " + S.selLog.join(", "));
+    console.log("  ✓ selection ladder: context refused (403) -> direct play of the exact URI, confirmed; no playlist substitution");
     pass++;
   }
 
@@ -161,6 +163,146 @@ const FM = window.ForgeMusic, T = FM._test, S = T.S;
     console.log("  ✓ play(): 404 on the implicit attempt retries with an explicit device_id");
     pass++;
   }
+
+  /* ================= acceptance: track selection (U5 fix brief) ================= */
+  function installWorld(behavior = {}) {
+    const world = { current: behavior.current || null, playing: !!behavior.playing, bodies: [], playCalls: 0, getCount: 0 };
+    global.fetch = async (url, opts = {}) => {
+      const u = String(url), m = opts.method || "GET";
+      if (u.includes("accounts.spotify.com")) return { ok: true, status: 200, json: async () => ({ access_token: "tok-fresh", refresh_token: "ref", expires_in: 3600 }) };
+      if (u.includes("/me/player/play") && m === "PUT") {
+        world.playCalls++;
+        const body = opts.body ? JSON.parse(opts.body) : null;
+        world.bodies.push(body);
+        if (behavior.onPlay) { const r = behavior.onPlay(body, world); if (r) return r; }
+        world.current = (body && body.offset && body.offset.uri) || (body && body.uris && body.uris[0]) || world.current;
+        world.playing = true;
+        return { ok: true, status: 204, json: async () => ({}) };
+      }
+      if (u.includes("/me/player/devices")) return { ok: true, status: 200, json: async () => ({ devices: [{ id: "dev9", type: "Smartphone", is_active: true, name: "Phone" }] }) };
+      if (u.includes("/me/player") && m === "GET") {
+        world.getCount++;
+        const cur = behavior.state ? behavior.state(world) : world.current;
+        if (!cur) return { ok: true, status: 200, json: async () => ({ device: { id: "dev9", name: "Phone" }, is_playing: world.playing, progress_ms: 0, item: null }) };
+        return { ok: true, status: 200, json: async () => ({ device: { id: "dev9", name: "Phone" }, is_playing: world.playing, progress_ms: 0, item: { uri: cur, duration_ms: 180000, name: "Song", artists: [{ name: "Artist" }] } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    return world;
+  }
+  const seedSel = (mod, tracks) => { S.module = mod; S.tracks = tracks; S.deviceId = "dev9"; };
+
+  // first / middle / last track in EACH module, with the module's own playlist context
+  for (const mod of ["train", "run", "yoga"]) {
+    const tracks = [0, 1, 2].map((i) => ({ uri: "spotify:track:" + mod + i, title: mod + " song " + i, artist: "A", duration: 180 }));
+    for (const idx of [0, 1, 2]) {
+      const w = installWorld({ current: "spotify:track:other", playing: true });
+      seedSel(mod, tracks);
+      await T.play(tracks[idx].uri);
+      assert.strictEqual(w.bodies.length, 1, mod + " idx " + idx + ": one context attempt");
+      assert.strictEqual(w.bodies[0].context_uri, "spotify:playlist:" + FM.PLAYLISTS[mod].id, mod + " uses its OWN playlist");
+      assert.strictEqual(w.bodies[0].offset.uri, tracks[idx].uri);
+      assert.strictEqual(S.lastSel.via, "context");
+    }
+  }
+  ok("acceptance: first/middle/last track selectable in Train, Run and Yoga — each with its own playlist context");
+
+  // selecting while playing, while paused, and selecting the currently-playing track
+  {
+    const tracks = [{ uri: "spotify:track:N1", title: "N1" }, { uri: "spotify:track:N2", title: "N2" }];
+    let w = installWorld({ current: "spotify:track:N1", playing: true });
+    seedSel("train", tracks); await T.play("spotify:track:N2");
+    assert.strictEqual(S.lastSel.via, "context"); assert.strictEqual(S.currentUri, "spotify:track:N2");
+    w = installWorld({ current: "spotify:track:N1", playing: false });
+    seedSel("train", tracks); await T.play("spotify:track:N2");
+    assert.strictEqual(S.lastSel.via, "context"); assert.strictEqual(S.lastSel.playing, true);
+    w = installWorld({ current: "spotify:track:N1", playing: true });
+    seedSel("train", tracks); await T.play("spotify:track:N1");
+    assert.strictEqual(S.lastSel.via, "context"); assert.strictEqual(w.bodies.length, 1);
+  }
+  ok("acceptance: select while playing, while paused, and the already-playing track");
+
+  // accepted, but playback state lags: second verify poll confirms — no direct attempt
+  {
+    let polls = 0;
+    const w = installWorld({ current: "spotify:track:OLD", playing: true, onPlay: () => { polls = 0; }, state: () => (++polls < 2 ? "spotify:track:OLD" : "spotify:track:LAG") });
+    seedSel("run", [{ uri: "spotify:track:LAG", title: "Lag" }]);
+    await T.play("spotify:track:LAG");
+    assert.strictEqual(S.lastSel.via, "context");
+    assert.strictEqual(w.bodies.length, 1, "lagging state must not trigger a needless direct attempt");
+  }
+  ok("acceptance: accepted request with lagging playback state confirms via polling (stale state tolerated)");
+
+  // accepted, never reflected: direct fallback of the SAME uri confirms
+  {
+    let direct = false;
+    const w = installWorld({ current: "spotify:track:OLD", playing: true, onPlay: (body) => { if (body && body.uris) direct = true; }, state: () => (direct ? "spotify:track:NV" : "spotify:track:OLD") });
+    seedSel("yoga", [{ uri: "spotify:track:NV", title: "NV" }]);
+    await T.play("spotify:track:NV");
+    assert.strictEqual(S.lastSel.via, "direct");
+    assert.strictEqual(w.bodies.length, 2);
+    assert.deepStrictEqual(w.bodies[1], { uris: ["spotify:track:NV"] });
+  }
+  ok("acceptance: accepted-but-not-reflected context request falls back to direct play of the same URI");
+
+  // both attempts fail: clear error, no substitution, no fake success
+  {
+    const w = installWorld({ current: "spotify:track:OLD", playing: true, onPlay: () => ({ ok: false, status: 403, json: async () => ({ error: { status: 403, message: "Restriction violated" } }) }) });
+    seedSel("train", [{ uri: "spotify:track:F1", title: "F Song" }]);
+    await T.play("spotify:track:F1");
+    assert.strictEqual(S.lastSel.result, "failed");
+    assert.ok(S.lastStatus.includes("Couldn't start") && S.lastStatus.includes("403"), "clear error shown: " + S.lastStatus);
+    assert.ok(!w.bodies.some((b) => b && b.context_uri && !b.offset), "no bare playlist start was substituted");
+  }
+  ok("acceptance: context + direct both fail -> explicit error, requested track never faked");
+
+  // rapid consecutive selections: the LAST tap wins, the superseded one goes silent
+  {
+    const w = installWorld({ current: "spotify:track:OLD", playing: true });
+    seedSel("run", [{ uri: "spotify:track:RA", title: "RA" }, { uri: "spotify:track:RB", title: "RB" }]);
+    const pa = T.play("spotify:track:RA");
+    const pb = T.play("spotify:track:RB");
+    await Promise.all([pa, pb]);
+    assert.strictEqual(S.lastSel.uri, "spotify:track:RB");
+    assert.strictEqual(S.currentUri, "spotify:track:RB");
+  }
+  ok("acceptance: rapid consecutive selections — latest tap wins, earlier attempt cannot overwrite state");
+
+  // network loss on the play requests
+  {
+    global.fetch = async (url, opts = {}) => {
+      const u = String(url);
+      if (u.includes("/me/player/play")) throw new TypeError("Failed to fetch");
+      if (u.includes("/me/player")) return { ok: true, status: 200, json: async () => ({ device: { id: "dev9" }, is_playing: false, progress_ms: 0, item: null }) };
+      return { ok: true, status: 200, json: async () => ({}) };
+    };
+    seedSel("train", [{ uri: "spotify:track:NET", title: "Net" }]);
+    await T.play("spotify:track:NET");
+    assert.strictEqual(S.lastSel.result, "failed");
+    assert.ok(S.lastStatus.includes("network error"), "network failure described: " + S.lastStatus);
+  }
+  ok("acceptance: network loss -> explicit network error (no silent failure)");
+
+  // expired access token: 401 -> silent refresh -> retry succeeds
+  {
+    let playAttempts = 0;
+    const w = installWorld({ current: "spotify:track:OLD", playing: true, onPlay: () => { playAttempts++; if (playAttempts === 1) return { ok: false, status: 401, json: async () => ({ error: { status: 401, message: "The access token expired" } }) }; } });
+    seedSel("yoga", [{ uri: "spotify:track:TOK", title: "Tok" }]);
+    await T.play("spotify:track:TOK");
+    assert.strictEqual(playAttempts, 2, "the request was retried after the token refresh");
+    assert.strictEqual(S.lastSel.via, "context");
+  }
+  ok("acceptance: expired token (401) refreshes silently and the selection completes");
+
+  // rate limiting: 429 on both attempts -> explicit rate-limit error
+  {
+    installWorld({ current: "spotify:track:OLD", playing: true, onPlay: () => ({ ok: false, status: 429, json: async () => ({ error: { status: 429, message: "API rate limit exceeded" } }) }) });
+    seedSel("run", [{ uri: "spotify:track:RL", title: "RL" }]);
+    await T.play("spotify:track:RL");
+    assert.strictEqual(S.lastSel.result, "failed");
+    assert.ok(S.lastStatus.includes("429") && S.lastStatus.toLowerCase().includes("rate limited"), "rate limit described: " + S.lastStatus);
+  }
+  ok("acceptance: Spotify 429 -> explicit rate-limit error");
 
   // mount wiring in the three module renderers
   for (const [file, mod, mountId] of [["train.js", "train", "trMusic"], ["run.js", "run", "rnMusic"], ["yoga.js", "yoga", "ygMusic"]]) {
