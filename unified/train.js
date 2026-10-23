@@ -257,12 +257,14 @@
         <button class="btn sm" id="trVoiceTest" style="margin-top:8px">Test voice</button>
         <div class="muted" style="margin-top:8px;font-size:13px">Clips play through The Forge's shared audio core; anything without a clip uses the phone's voice.</div>
       </div>
+      <div id="trMusic"></div>
     </div>`;
     $("trStartBtn").onclick = startModule;
     $("trPauseBtn").onclick = togglePause;
     $("trSkipBtn").onclick = skipStep;
     $("trRate").addEventListener("input", (e) => { prefs().rate = +e.target.value; $("trRateLabel").textContent = prefs().rate.toFixed(2); savePrefs(); });
-    $("trVoiceTest").addEventListener("click", () => speak("Dumbbell circuit complete. Guns loaded. Go rehydrate.")); // [U4 fix] the original test line has no clip in ANY version — it relied on phone TTS, which is inert in the Android WebView; the test now plays a real cornerman clip like the Run/Yoga tests do
+    $("trVoiceTest").addEventListener("click", () => speak("Dumbbell circuit complete. Guns loaded. Go rehydrate."));
+    if (window.ForgeMusic) ForgeMusic.mount("train", document.getElementById("trMusic")); // [U4 fix] the original test line has no clip in ANY version — it relied on phone TTS, which is inert in the Android WebView; the test now plays a real cornerman clip like the Run/Yoga tests do
     if (started && !sessionFinished) { announceStep(true); syncControls(); }
     else if (sessionFinished) { if ($("trPhase")) $("trPhase").textContent = "Workout complete"; syncControls(); }
     else syncControls();
