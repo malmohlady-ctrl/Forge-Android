@@ -205,3 +205,21 @@ ok("Diagnostics self-test contract preserved: the U0 fixture shapes still import
 });
 
 console.log("U4 tests: " + pass + " passed");
+
+/* ---------- post-build fix regression: voice-test lines must resolve to clips ---------- */
+{
+  const fsx = require("fs"), pathx = require("path"), assertx = require("assert");
+  const rd = (f) => fsx.readFileSync(pathx.join(__dirname, "..", "unified", f), "utf8");
+  const cases = [
+    ["train.js", "Dumbbell circuit complete. Guns loaded. Go rehydrate."],
+    ["run.js", "Start running. Let's fucking go, my nigga!"],
+    ["yoga.js", "Breathe in… and breathe out. Nice and easy."],
+  ];
+  for (const [f, line] of cases) {
+    const src = rd(f);
+    assertx.ok(src.includes('"' + line + '":'), f + " voice-test line must be a CLIPS key (a clipless line falls back to TTS, which is inert in the WebView)");
+    assertx.ok(!src.includes('speak("This is your corner coach'), "the TTS-only test line must not return");
+  }
+  pass++; console.log("  ✓ voice-test lines in all three modules resolve to real clips (WebView TTS fallback flaw)");
+  console.log("U4 tests incl. fix regression: " + pass + " passed");
+}
