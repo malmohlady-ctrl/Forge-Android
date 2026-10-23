@@ -16,7 +16,7 @@ const RU = "com.malmohlady.theforge://spotify-callback";
 
 (async () => {
   assert.strictEqual(FM.DEFAULT_REDIRECT, RU); ok("default redirect = prescribed production-scheme callback");
-  assert.ok(FM.SCOPES.includes("user-modify-playback-state") && FM.SCOPES.includes("user-read-playback-state")); ok("scopes mirror the web apps' proven set");
+  assert.ok(FM.SCOPES.includes("user-modify-playback-state") && FM.SCOPES.includes("user-read-playback-state") && FM.SCOPES.includes("playlist-read-private") && FM.SCOPES.includes("playlist-read-collaborative")); ok("scopes: playback set + playlist-read (Phase B fix for dev-mode playlist access)");
 
   const ch = await T.sha256b64url("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk");
   assert.strictEqual(ch, "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"); ok("PKCE S256 challenge matches the RFC 7636 test vector");
