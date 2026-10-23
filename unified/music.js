@@ -133,6 +133,7 @@
     module: null, tracks: [], deviceId: null, isPlaying: false, currentUri: null,
     progressMs: 0, anchorAt: 0, durationMs: 0, shuffle: false, repeat: "off",
     volume: 90, volDead: false, seeking: false, pollTimer: 0, tickTimer: 0, root: null,
+    selSeq: 0, selLog: [], lastSel: null, listKey: "",
   };
   const playlistId = () => (PLAYLISTS[S.module] || {}).id || "";
   function applyPlayback(p) {
@@ -149,15 +150,16 @@
   function pickDevice(devs) {
     return devs.filter((d) => d.is_active)[0] || devs.filter((d) => d.type === "Smartphone")[0] || devs[0] || null;
   }
-  async function refreshPlayback() {
-    try {
-      const r = await api("/me/player");
-      if (r.status === 204) { S.isPlaying = false; paint(); return; }
-      if (!r.ok) return;
-      applyPlayback(await r.json());
-      paint();
-    } catch (e) {}
+  async function fetchState() {
+    const r = await api("/me/player");
+    if (r.status === 204) { S.isPlaying = false; paint(); return null; }
+    if (!r.ok) return null;
+    const p = await r.json();
+    applyPlayback(p);
+    paint();
+    return p;
   }
+  async function refreshPlayback() { try { await fetchState(); } catch (e) {} }
   async function chooseDevice() {
     try {
       const r = await api("/me/player/devices");
@@ -208,46 +210,106 @@
   }
   async function errText(r) { try { const j = await r.json(); return (j && j.error && j.error.message) || ""; } catch (e) { return ""; } }
   function failStatus(what, status, msg) { S.lastStatus = what + " failed (" + status + (msg ? ": " + msg : "") + ")."; setStatus(S.lastStatus); }
+  const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+  let verifyDelays = [650, 900];
+  function describeAttempt(label, r) {
+    if (!r) return label + ": not tried";
+    if (r.status === -1) return label + ": network error (" + (r.msg || "request failed") + ")";
+    if (r.status === 0) return label + ": no Spotify device available";
+    if (r.status === 401) return label + ": session expired (401) — reconnect in Settings → 🎧 Spotify";
+    if (r.status === 403) return label + ": refused by Spotify (403" + (r.msg ? ": " + r.msg : "") + ")";
+    if (r.status === 404) return label + ": no active Spotify device (404) — open the Spotify app once";
+    if (r.status === 429) return label + ": rate limited by Spotify (429) — wait a few seconds and retry";
+    return label + ": failed (" + r.status + (r.msg ? ": " + r.msg : "") + ")";
+  }
+  async function tryPlay(body, withDevice) {
+    let path = "/me/player/play";
+    if (withDevice) {
+      const id = S.deviceId || (await chooseDevice());
+      if (!id) return { ok: false, status: 0, msg: "" };
+      path += "?device_id=" + encodeURIComponent(id);
+    }
+    try {
+      const r = await api(path, "PUT", body);
+      if (r.ok || r.status === 204) return { ok: true, status: r.status };
+      return { ok: false, status: r.status, msg: await errText(r) };
+    } catch (e) { return { ok: false, status: -1, msg: e.message }; }
+  }
+  async function verifySelected(sel) {
+    for (const d of verifyDelays) {
+      await wait(d);
+      if (sel.seq !== S.selSeq) return "superseded";
+      const p = await fetchState().catch(() => null);
+      if (sel.seq !== S.selSeq) return "superseded";
+      if (p && S.currentUri === sel.uri) return "confirmed";
+    }
+    return "unconfirmed";
+  }
+  /* Track selection (U5 fix): the tapped URI is captured with its module's
+     playlist and preserved through every attempt. Ladder: playlist-context +
+     offset, then direct track play. Generic playlist playback is NEVER
+     substituted for the requested song. Success means the playback state
+     confirms the URI — an accepted HTTP response alone does not count. */
+  async function selectTrack(uri) {
+    const mod = S.module, pl = PLAYLISTS[mod];
+    if (!pl || !uri) return;
+    const sel = { seq: ++S.selSeq, uri, module: mod, pid: pl.id };
+    const title = (S.tracks.filter((t) => t.uri === uri)[0] || {}).title || "that track";
+    S.selLog = [];
+    const mine = () => sel.seq === S.selSeq && S.module === mod;
+    setStatus("Starting " + title + "…");
+    let a = await tryPlay({ context_uri: "spotify:playlist:" + sel.pid, offset: { uri } }, false);
+    S.selLog.push("context+offset -> " + a.status);
+    if (!mine()) return;
+    if (!a.ok && a.status === 404) {
+      a = await tryPlay({ context_uri: "spotify:playlist:" + sel.pid, offset: { uri } }, true);
+      S.selLog.push("context+offset (device) -> " + a.status);
+      if (!mine()) return;
+    }
+    if (a.ok) {
+      const v = await verifySelected(sel);
+      if (!mine()) return;
+      if (v === "confirmed") { S.lastSel = { uri, via: "context", playing: S.isPlaying }; setStatus(""); setTimeout(refreshPlayback, 400); return; }
+      S.selLog.push("context accepted, track not confirmed");
+    }
+    if (!mine()) return;
+    let b = await tryPlay({ uris: [uri] }, false);
+    S.selLog.push("direct -> " + b.status);
+    if (!mine()) return;
+    if (!b.ok && b.status === 404) {
+      b = await tryPlay({ uris: [uri] }, true);
+      S.selLog.push("direct (device) -> " + b.status);
+      if (!mine()) return;
+    }
+    if (b.ok) {
+      const v2 = await verifySelected(sel);
+      if (!mine()) return;
+      if (v2 === "confirmed") { S.lastSel = { uri, via: "direct", playing: S.isPlaying }; setStatus(""); setTimeout(refreshPlayback, 400); return; }
+      S.lastSel = { uri, via: null, result: "unconfirmed" };
+      S.lastStatus = "Spotify accepted the request but didn't start \"" + title + "\". Open the Spotify app once, then tap again.";
+      setStatus(S.lastStatus);
+      return;
+    }
+    S.lastSel = { uri, via: null, result: "failed" };
+    S.lastStatus = "Couldn't start \"" + title + "\" — " + describeAttempt("playlist start", a) + "; " + describeAttempt("direct play", b) + ".";
+    setStatus(S.lastStatus);
+  }
   async function play(uri) {
+    if (uri) return selectTrack(uri);
+    // Resume / start-the-playlist (the play button): unchanged semantics,
+    // with the same implicit-first device route and error surfacing.
     try {
       setStatus("");
-      const body = playBody(uri);
-      // No device_id first: pause/next (which work on his phone) address the
-      // ACTIVE device implicitly; naming a device explicitly is the retry.
-      let r = await api("/me/player/play", "PUT", body);
-      if (r.status === 404) {
-        const id = S.deviceId || (await chooseDevice());
-        if (!id) { setStatus("No Spotify device found. Open the Spotify app on your phone once, then tap play again."); return; }
-        r = await api("/me/player/play?device_id=" + encodeURIComponent(id), "PUT", body);
-        if (r.status === 404) { S.deviceId = null; setStatus("Spotify device went away. Open the Spotify app, then tap play again."); return; }
-      }
-      if (!r.ok && r.status !== 204) {
-        const msg = await errText(r);
-        if (uri && body && body.offset) {
-          // Track jump refused: still start the module's playlist, and say why.
-          const r2 = await api("/me/player/play", "PUT", { context_uri: "spotify:playlist:" + playlistId() });
-          if (r2.ok || r2.status === 204) { S.lastStatus = "Track jump refused (" + r.status + (msg ? ": " + msg : "") + ") — started the playlist instead."; setStatus(S.lastStatus); }
-          else failStatus("Play", r2.status, await errText(r2));
-        } else failStatus("Play", r.status, msg);
-        setTimeout(refreshPlayback, 700);
+      const body = playBody(undefined);
+      let r = await tryPlay(body, false);
+      if (!r.ok && r.status === 404) r = await tryPlay(body, true);
+      if (!r.ok) {
+        if (r.status === 404) setStatus("No Spotify device found. Open the Spotify app on your phone once, then tap play again.");
+        else if (r.status === 0) setStatus("No Spotify device found. Open the Spotify app on your phone once, then tap play again.");
+        else failStatus("Play", r.status, r.msg);
         return;
       }
-      if (uri) {
-        // Accepted — but verify it actually took; if not, play the track directly.
-        setStatus("Play request accepted — checking…");
-        setTimeout(async () => {
-          await refreshPlayback();
-          if (S.currentUri === uri) { setStatus(""); return; }
-          try {
-            const r3 = await api("/me/player/play", "PUT", { uris: [uri] });
-            if (r3.ok || r3.status === 204) { S.lastStatus = "The playlist jump didn't take, so the track was played directly."; setStatus(S.lastStatus); setTimeout(refreshPlayback, 700); }
-            else failStatus("Direct play", r3.status, await errText(r3));
-          } catch (e) { S.lastStatus = "Direct play failed: " + e.message; setStatus(S.lastStatus); }
-        }, 1000);
-      } else {
-        setStatus("");
-        setTimeout(refreshPlayback, 700);
-      }
+      setTimeout(refreshPlayback, 700);
     } catch (e) { S.lastStatus = "Play failed: " + e.message; setStatus(S.lastStatus); }
   }
   async function pausePlayback() {
@@ -283,7 +345,9 @@
     const rp = q("fm-repeat");
     if (rp) { rp.textContent = S.repeat === "track" ? "🔂 One" : S.repeat === "off" ? "🔁 Off" : "🔁 All"; rp.classList.toggle("on", S.repeat !== "off"); }
     const list = q("fm-list");
-    if (list) {
+    const listKey = S.module + "|" + S.tracks.length + "|" + (S.tracks[0] ? S.tracks[0].uri : "") + "|" + (S.tracks[S.tracks.length - 1] ? S.tracks[S.tracks.length - 1].uri : "") + "|" + S.currentUri;
+    if (list && listKey !== S.listKey) {
+      S.listKey = listKey;
       list.innerHTML = "";
       for (const tr of S.tracks) {
         const li = document.createElement("li");
@@ -291,7 +355,7 @@
         const n = document.createElement("span"); n.textContent = tr.title + (tr.artist ? " — " + tr.artist : "");
         const d = document.createElement("span"); d.textContent = tr.duration ? fmt(tr.duration) : "";
         li.appendChild(n); li.appendChild(d);
-        li.addEventListener("click", () => { setStatus("Tap: " + tr.title + " — sending…"); play(tr.uri); });
+        li.addEventListener("click", () => play(tr.uri));
         list.appendChild(li);
       }
     }
@@ -338,7 +402,7 @@
       '<div class="fm-status"></div>' +
       '<div class="fm-info muted" style="font-size:12px;margin-top:4px"></div>' +
       '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-4</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-5</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
@@ -391,7 +455,7 @@
     mount, unmount, connect, disconnect, connected, cfg,
     pause: () => { if (connected()) pausePlayback(); },
     isPlaying: () => S.isPlaying,
-    _test: { buildAuthorizeUrl, parseCallback, sha256b64url, randomStr, playBody, pickDevice, applyPlayback, migrate, store, S, refresh, api, play, pausePlayback, loadPlaylist, chooseDevice, resolveTitle, fetchPlaylistTracks },
+    _test: { buildAuthorizeUrl, parseCallback, sha256b64url, randomStr, playBody, pickDevice, applyPlayback, migrate, store, S, refresh, api, play, pausePlayback, loadPlaylist, chooseDevice, resolveTitle, fetchPlaylistTracks, selectTrack, setVerifyDelays: (d) => { verifyDelays = d; } },
   };
 
   /* ---------- Settings view: connection management ---------- */
