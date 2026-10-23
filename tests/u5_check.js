@@ -50,3 +50,16 @@ const RU = "com.malmohlady.theforge://spotify-callback";
   assert.ok(html.includes('id="view-spike"') && html.includes("spotify-spike.js")); ok("spike view + script wired into the shell");
   console.log("U5 spike tests: " + pass + " passed");
 })().catch((e) => { console.error(e); process.exit(1); });
+
+/* ---------- entry-point reachability regression (Diagnostics is orphaned:
+   its only link lives in the U0 module-stub view, unreachable since U1–U3
+   built the real modules — the spike needs its own Settings entry) ---------- */
+{
+  const fsx = require("fs"), pathx = require("path"), assertx = require("assert");
+  const app = fsx.readFileSync(pathx.join(__dirname, "..", "unified", "app.js"), "utf8");
+  assertx.strictEqual((app.match(/id="dtSpike"/g) || []).length, 1, "exactly one dtSpike button");
+  assertx.ok(app.includes('$("#dtSpike"); if (dtS) dtS.onclick = () => show("spike");'), "dtSpike binds to the spike view");
+  const iData = app.indexOf("Your data"), iBtn = app.indexOf('id="dtSpike"'), iReset = app.indexOf('id="dtReset"');
+  assertx.ok(iData > -1 && iBtn > iData && iBtn < iReset, "dtSpike sits inside the Settings > Your data card (rendered path)");
+  console.log("  ✓ spike entry: Settings > Your data button, unique id, bound to show('spike'), placed in the card");
+}
