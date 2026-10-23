@@ -495,7 +495,7 @@ function renderSettings() {
   <div class="card"><h3>Your data</h3>
     <p class="small muted">Everything lives only in this browser on this device. Export a backup regularly — clearing browser data or switching phones erases it otherwise.</p>
     <div class="row" style="margin-top:10px"><button class="btn ghost grow" id="dtExp">⬇ Export backup</button>
-      <button class="btn ghost grow" id="dtImp">⬆ Import data</button>
+      <button class="btn ghost grow" id="dtImportData">⬆ Import data</button>
     <button class="btn ghost grow" id="dtImp">⬆ Import backup</button></div>
     <input type="file" id="dtFile" accept="application/json" style="display:none">
     <button class="btn danger block" style="margin-top:10px" id="dtReset">Reset everything</button>
@@ -527,7 +527,7 @@ function renderSettings() {
     };
   };
   $("#dtExp").onclick = exportData;
-  const dtI = $("#dtImp"); if (dtI) dtI.onclick = () => show("import");
+  const dtI = $("#dtImportData"); if (dtI) dtI.onclick = () => show("import");
   $("#dtImp").onclick = () => $("#dtFile").click();
   $("#dtFile").onchange = e => importData(e.target.files[0]);
   $("#dtReset").onclick = () => confirmSheet("Reset The Forge?", "This deletes ALL data on this device — diary, weights, workouts, settings. Export a backup first if you might want it back.", "Delete everything", () => {
