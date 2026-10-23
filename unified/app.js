@@ -117,13 +117,15 @@ function greet() { const h = new Date().getHours(); return h < 5 ? "Up late" : h
 let curView = "home";
 let zoomOrigin = null;
 function show(view, origin) {
+  if (window.ForgeMusic) ForgeMusic.unmount();
+  window.__forgeMusicViewOpen = (view === "music");
   curView = view;
   $$(".view").forEach(v => v.classList.remove("on", "hubview"));
   const el = $("#view-" + view);
   if (origin) { el.style.setProperty("--zox", origin.x + "%"); el.style.setProperty("--zoy", origin.y + "%"); }
   el.classList.add("on");
   if (view === "home") el.classList.add("hubview");
-  const titles = {home: "", nutrition: "Nutrition", workouts: "Workouts", progress: "Progress", plan: "Plan", body: "Body", settings: "Settings", train: "Train — Lace Up", run: "Run — Couch to 5K", yoga: "Yoga — Namastay Home", diag: "U0 Diagnostics", spike: "U5 Spotify Spike"};
+  const titles = {home: "", nutrition: "Nutrition", workouts: "Workouts", progress: "Progress", plan: "Plan", body: "Body", settings: "Settings", train: "Train — Lace Up", run: "Run — Couch to 5K", yoga: "Yoga — Namastay Home", diag: "U0 Diagnostics", music: "Spotify"};
   const tt = $("#topTitle");
   tt.textContent = titles[view] || "";
   tt.style.display = view === "home" ? "none" : "block";
@@ -131,7 +133,7 @@ function show(view, origin) {
   $("#topBar").style.display = view === "home" ? "none" : "block";
   ({home: renderHome, nutrition: window.renderNutrition, workouts: window.renderWorkouts,
     progress: window.renderProgress, plan: renderPlan, body: renderBody, settings: renderSettings,
-    train: window.renderTrain, run: window.renderRun, yoga: window.renderYoga, import: window.renderImport, diag: window.renderDiag, spike: window.renderSpike}[view] || renderHome)();
+    train: window.renderTrain, run: window.renderRun, yoga: window.renderYoga, import: window.renderImport, diag: window.renderDiag, music: window.renderMusic}[view] || renderHome)();
   window.scrollTo(0, 0);
 }
 function hubGo(view, ev) {
@@ -204,8 +206,8 @@ window.renderDiag = function () {
     <h3>Importer self-test (synthetic fixtures)</h3>
     <button class="btn" onclick="ForgeDiag.runImporter()">Run importer self-test</button>
     <pre id="diagImport" style="white-space:pre-wrap;background:#10182b;padding:10px;border-radius:10px">Not run yet. Expects: import #1 adds 7 · repeat adds 0 · conflict probe reports 1 · corrupt fixture rejected · restore returns to 0.</pre>
-    <h3>U5 Spotify auth spike</h3>
-    <button class="btn" onclick="show('spike')">Open the Spotify auth spike</button>
+    <h3>Spotify</h3>
+    <button class="btn" onclick="show('music')">Open Spotify settings</button>
     <h3>GPS probe (U2 spike)</h3>
     <p style="color:var(--muted,#a8b4d4);line-height:1.5">Location permission + live fix stream inside the WebView, judged by the original Couch rules (&gt;40 m accuracy dropped · &lt;8 m in &lt;15 s = jitter · &gt;16.7 m/s = teleport). Coordinates show only here — nothing is stored or sent anywhere.</p>
     <button class="btn" onclick="ForgeDiag.gpsState()">Permission state</button>
@@ -499,7 +501,7 @@ function renderSettings() {
     <div class="row" style="margin-top:10px"><button class="btn ghost grow" id="dtExp">⬇ Export backup</button>
       <button class="btn ghost grow" id="dtImportData">⬆ Import data</button>
     <button class="btn ghost grow" id="dtImp">⬆ Import backup</button></div>
-    <button class="btn ghost block" style="margin-top:10px" id="dtSpike">🎧 U5 Spotify auth spike (test)</button>
+    <button class="btn ghost block" style="margin-top:10px" id="dtMusic">🎧 Spotify</button>
     <input type="file" id="dtFile" accept="application/json" style="display:none">
     <button class="btn danger block" style="margin-top:10px" id="dtReset">Reset everything</button>
     <p class="small muted" style="margin-top:10px">${DB.entries.length} food entries · ${DB.foods.length} custom foods · ${DB.meals.length} saved meals · ${DB.weights.length} weigh-ins · ${DB.sessions.length} workouts logged</p>
@@ -531,7 +533,7 @@ function renderSettings() {
   };
   $("#dtExp").onclick = exportData;
   const dtI = $("#dtImportData"); if (dtI) dtI.onclick = () => show("import");
-  const dtS = $("#dtSpike"); if (dtS) dtS.onclick = () => show("spike");
+  const dtS = $("#dtMusic"); if (dtS) dtS.onclick = () => show("music");
   $("#dtImp").onclick = () => $("#dtFile").click();
   $("#dtFile").onchange = e => importData(e.target.files[0]);
   $("#dtReset").onclick = () => confirmSheet("Reset The Forge?", "This deletes ALL data on this device — diary, weights, workouts, settings. Export a backup first if you might want it back.", "Delete everything", () => {
