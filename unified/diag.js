@@ -63,5 +63,93 @@
       lines.push("backup restore: imported count back to " + restored.importedCount + " — expect 0 (pre-import state)");
       out("#diagImport", lines.join("\n"));
     },
+
+    /* ---- U2 GPS spike probe. State lives here (not the DOM) so leaving
+       and returning to Diagnostics keeps the watch + log alive. ---- */
+    _gps: { watchId: null, filter: null, pts: [], log: [], startedAt: 0, seen: 0, hb: null },
+    _gpsLog(msg) {
+      const g = this._gps;
+      const el = g.startedAt ? ((Date.now() - g.startedAt) / 1000).toFixed(0) : "0";
+      g.log.push("[+" + el + "s] " + msg);
+      if (g.log.length > 300) g.log.shift();
+      this.gpsPaint();
+    },
+    gpsPaint() {
+      const g = this._gps;
+      const el = $("#diagGpsLog"); if (el && g.log.length) el.textContent = g.log.join("\n");
+      const st = $("#diagGps"); if (!st) return;
+      if (!g.filter) { if (g.log.length) st.textContent = "Watch stopped. Log below."; return; }
+      const c = g.filter.counts;
+      const last = g.filter.last();
+      st.textContent = "watch: " + (g.watchId !== null ? "RUNNING" : "idle") +
+        " · seen " + g.seen + " · accepted " + c.accepted +
+        " · dropped accuracy " + c.accuracy + " · jitter " + c.jitter + " · teleport " + c.teleport +
+        "\ndistance (accepted fixes): " + window.ForgeGPS.trackKm(g.pts).toFixed(3) + " km" +
+        (last ? "\nlast fix: " + last.lat + ", " + last.lon + " at +" + ((last.t - g.startedAt) / 1000).toFixed(0) + "s" : "\nno fix accepted yet");
+    },
+    async gpsState() {
+      let line = "navigator.geolocation: " + (("geolocation" in navigator) ? "present" : "ABSENT");
+      try {
+        const plug = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.GpsPerm;
+        line += "\nnative GpsPerm plugin: " + (plug ? "present" : "ABSENT");
+        if (plug) line += " · state = " + (await plug.state()).state;
+      } catch (e) { line += "\nplugin state error: " + e; }
+      try {
+        if (navigator.permissions && navigator.permissions.query) {
+          const q = await navigator.permissions.query({ name: "geolocation" });
+          line += "\nWebView permissions API: " + q.state;
+        }
+      } catch (e) { line += "\nWebView permissions API: unavailable"; }
+      out("#diagGps", line);
+    },
+    async gpsRequest() {
+      try {
+        const plug = window.Capacitor.Plugins.GpsPerm;
+        const r = await plug.request();
+        out("#diagGps", "request finished · state = " + r.state);
+      } catch (e) { out("#diagGps", "request failed: " + e); }
+    },
+    gpsOnce() {
+      if (!("geolocation" in navigator)) return out("#diagGps", "geolocation ABSENT in this WebView");
+      out("#diagGps", "asking for one fix…");
+      navigator.geolocation.getCurrentPosition(
+        (pos) => out("#diagGps", "fix ✓ lat " + pos.coords.latitude.toFixed(6) + " lon " + pos.coords.longitude.toFixed(6) +
+          " · accuracy " + (pos.coords.accuracy ? Math.round(pos.coords.accuracy) + " m" : "n/a")),
+        (err) => out("#diagGps", "fix FAILED · code " + err.code + " (" + err.message + ") — 1=denied 2=unavailable 3=timeout"),
+        window.ForgeGPS.WATCH_OPTS);
+    },
+    gpsWatch() {
+      const g = this._gps;
+      if (g.watchId !== null) {
+        try { navigator.geolocation.clearWatch(g.watchId); } catch (e) {}
+        g.watchId = null;
+        if (g.hb) { clearInterval(g.hb); g.hb = null; }
+        this._gpsLog("watch STOPPED by user · accepted " + g.pts.length + " · distance " + window.ForgeGPS.trackKm(g.pts).toFixed(3) + " km");
+        this.gpsPaint();
+        return;
+      }
+      if (!("geolocation" in navigator)) return out("#diagGps", "geolocation ABSENT in this WebView");
+      g.filter = window.ForgeGPS.createFilter(); g.pts = []; g.seen = 0; g.startedAt = Date.now(); g.log = [];
+      this._gpsLog("watch STARTED · original Couch acceptance rules active");
+      g.watchId = navigator.geolocation.watchPosition((pos) => {
+        g.seen++;
+        const r = g.filter.push(pos.coords, Date.now());
+        if (r.accepted) { g.pts.push(r.point); this._gpsLog("fix ACCEPTED · acc " + (pos.coords.accuracy ? Math.round(pos.coords.accuracy) : "?") + " m · total " + window.ForgeGPS.trackKm(g.pts).toFixed(3) + " km"); }
+        else this._gpsLog("fix dropped (" + r.reason + ") · acc " + (pos.coords.accuracy ? Math.round(pos.coords.accuracy) : "?") + " m");
+        this.gpsPaint();
+      }, (err) => {
+        this._gpsLog("watch ERROR · code " + err.code + " (" + err.message + ")");
+        this.gpsPaint();
+      }, window.ForgeGPS.WATCH_OPTS);
+      g.hb = setInterval(() => this._gpsLog("heartbeat · page " + document.visibilityState), 10000);
+      this.gpsPaint();
+    },
   };
+
+  /* Lock-test evidence: timestamp page visibility transitions while the
+     probe watch runs (lock/unlock shows up here with its elapsed stamp). */
+  document.addEventListener("visibilitychange", () => {
+    const g = window.ForgeDiag && window.ForgeDiag._gps;
+    if (g && g.watchId !== null) window.ForgeDiag._gpsLog("page is now " + document.visibilityState);
+  });
 })();
