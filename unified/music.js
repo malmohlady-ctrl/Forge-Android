@@ -154,6 +154,7 @@
       if (r.status === 204) { S.isPlaying = false; paint(); return; }
       if (!r.ok) return;
       applyPlayback(await r.json());
+      if (S.flash) { S.flash = false; setStatus(""); }
       paint();
     } catch (e) {}
   }
@@ -209,17 +210,22 @@
   function failStatus(what, status, msg) { S.lastStatus = what + " failed (" + status + (msg ? ": " + msg : "") + ")."; setStatus(S.lastStatus); }
   async function play(uri) {
     try {
-      let id = S.deviceId || (await chooseDevice());
-      if (!id) { setStatus("No Spotify device found. Open the Spotify app on your phone once, then tap play again."); return; }
       setStatus("");
       const body = playBody(uri);
-      const r = await api("/me/player/play?device_id=" + encodeURIComponent(id), "PUT", body);
-      if (r.status === 404) { S.deviceId = null; setStatus("Spotify device went away. Open the Spotify app, then tap play again."); return; }
+      // No device_id first: pause/next (which work on his phone) address the
+      // ACTIVE device implicitly; naming a device explicitly is the retry.
+      let r = await api("/me/player/play", "PUT", body);
+      if (r.status === 404) {
+        const id = S.deviceId || (await chooseDevice());
+        if (!id) { setStatus("No Spotify device found. Open the Spotify app on your phone once, then tap play again."); return; }
+        r = await api("/me/player/play?device_id=" + encodeURIComponent(id), "PUT", body);
+        if (r.status === 404) { S.deviceId = null; setStatus("Spotify device went away. Open the Spotify app, then tap play again."); return; }
+      }
       if (!r.ok && r.status !== 204) {
         const msg = await errText(r);
         if (uri && body && body.offset) {
           // Track jump refused: still start the module's playlist, and say why.
-          const r2 = await api("/me/player/play?device_id=" + encodeURIComponent(id), "PUT", { context_uri: "spotify:playlist:" + playlistId() });
+          const r2 = await api("/me/player/play", "PUT", { context_uri: "spotify:playlist:" + playlistId() });
           if (r2.ok || r2.status === 204) { S.lastStatus = "Track jump refused (" + r.status + (msg ? ": " + msg : "") + ") — started the playlist instead."; setStatus(S.lastStatus); }
           else failStatus("Play", r2.status, await errText(r2));
         } else failStatus("Play", r.status, msg);
@@ -266,7 +272,7 @@
         const n = document.createElement("span"); n.textContent = tr.title + (tr.artist ? " — " + tr.artist : "");
         const d = document.createElement("span"); d.textContent = tr.duration ? fmt(tr.duration) : "";
         li.appendChild(n); li.appendChild(d);
-        li.addEventListener("click", () => play(tr.uri));
+        li.addEventListener("click", () => { play(tr.uri); S.flash = true; setStatus("Starting " + tr.title + "…"); });
         list.appendChild(li);
       }
     }
@@ -312,7 +318,7 @@
       '<label class="muted" style="font-size:13px">Volume <input type="range" class="fm-vol" min="0" max="100" value="90" style="vertical-align:middle"></label></div>' +
       '<div class="fm-status"></div>' +
       '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + '</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-3</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
