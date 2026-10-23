@@ -269,7 +269,7 @@
     if (a.ok) {
       const v = await verifySelected(sel);
       if (!mine()) return;
-      if (v === "confirmed") { S.lastSel = { uri, via: "context", playing: S.isPlaying }; setStatus(""); setTimeout(refreshPlayback, 400); return; }
+      if (v === "confirmed") { S.lastSel = { uri, via: "context", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title; setStatus(S.lastStatus); setTimeout(refreshPlayback, 400); return; }
       S.selLog.push("context accepted, track not confirmed");
     }
     if (!mine()) return;
@@ -284,7 +284,7 @@
     if (b.ok) {
       const v2 = await verifySelected(sel);
       if (!mine()) return;
-      if (v2 === "confirmed") { S.lastSel = { uri, via: "direct", playing: S.isPlaying }; setStatus(""); setTimeout(refreshPlayback, 400); return; }
+      if (v2 === "confirmed") { S.lastSel = { uri, via: "direct", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title + " (direct — the playlist jump didn't take)"; setStatus(S.lastStatus); setTimeout(refreshPlayback, 400); return; }
       S.lastSel = { uri, via: null, result: "unconfirmed" };
       S.lastStatus = "Spotify accepted the request but didn't start \"" + title + "\". Open the Spotify app once, then tap again.";
       setStatus(S.lastStatus);
@@ -402,7 +402,7 @@
       '<div class="fm-status"></div>' +
       '<div class="fm-info muted" style="font-size:12px;margin-top:4px"></div>' +
       '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-5</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-5.1</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
