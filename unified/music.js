@@ -258,21 +258,9 @@
     S.selLog = [];
     const mine = () => sel.seq === S.selSeq && S.module === mod;
     setStatus("Starting " + title + "…");
-    let a = await tryPlay({ context_uri: "spotify:playlist:" + sel.pid, offset: { uri } }, false);
-    S.selLog.push("context+offset -> " + a.status);
-    if (!mine()) return;
-    if (!a.ok && a.status === 404) {
-      a = await tryPlay({ context_uri: "spotify:playlist:" + sel.pid, offset: { uri } }, true);
-      S.selLog.push("context+offset (device) -> " + a.status);
-      if (!mine()) return;
-    }
-    if (a.ok) {
-      const v = await verifySelected(sel);
-      if (!mine()) return;
-      if (v === "confirmed") { S.lastSel = { uri, via: "context", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title; setStatus(S.lastStatus); setTimeout(refreshPlayback, 400); return; }
-      S.selLog.push("context accepted, track not confirmed");
-    }
-    if (!mine()) return;
+    logAction("Last tap: " + title + " — trying…");
+    // PRIMARY: direct play of the exact URI. No context, no offset — shuffle
+    // and queue state cannot substitute a different song for the tapped one.
     let b = await tryPlay({ uris: [uri] }, false);
     S.selLog.push("direct -> " + b.status);
     if (!mine()) return;
@@ -284,15 +272,33 @@
     if (b.ok) {
       const v2 = await verifySelected(sel);
       if (!mine()) return;
-      if (v2 === "confirmed") { S.lastSel = { uri, via: "direct", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title + " (direct — the playlist jump didn't take)"; setStatus(S.lastStatus); setTimeout(refreshPlayback, 400); return; }
+      if (v2 === "confirmed") { S.lastSel = { uri, via: "direct", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title; setStatus(S.lastStatus); logAction("Last tap: " + title + " → ✓ playing (direct)"); setTimeout(refreshPlayback, 400); return; }
+      S.selLog.push("direct accepted, track not confirmed");
+    }
+    if (!mine()) return;
+    // SECOND: playlist context + offset (keeps the playlist playing after).
+    let a = await tryPlay({ context_uri: "spotify:playlist:" + sel.pid, offset: { uri } }, false);
+    S.selLog.push("context+offset -> " + a.status);
+    if (!mine()) return;
+    if (!a.ok && a.status === 404) {
+      a = await tryPlay({ context_uri: "spotify:playlist:" + sel.pid, offset: { uri } }, true);
+      S.selLog.push("context+offset (device) -> " + a.status);
+      if (!mine()) return;
+    }
+    if (a.ok) {
+      const v = await verifySelected(sel);
+      if (!mine()) return;
+      if (v === "confirmed") { S.lastSel = { uri, via: "context", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title + " (via playlist)"; setStatus(S.lastStatus); logAction("Last tap: " + title + " → ✓ playing (via playlist)"); setTimeout(refreshPlayback, 400); return; }
       S.lastSel = { uri, via: null, result: "unconfirmed" };
       S.lastStatus = "Spotify accepted the request but didn't start \"" + title + "\". Open the Spotify app once, then tap again.";
       setStatus(S.lastStatus);
+      logAction("Last tap: " + title + " → accepted, but Spotify never started it");
       return;
     }
     S.lastSel = { uri, via: null, result: "failed" };
-    S.lastStatus = "Couldn't start \"" + title + "\" — " + describeAttempt("playlist start", a) + "; " + describeAttempt("direct play", b) + ".";
+    S.lastStatus = "Couldn't start \"" + title + "\" — " + describeAttempt("direct play", b) + "; " + describeAttempt("playlist start", a) + ".";
     setStatus(S.lastStatus);
+    logAction("Last tap: " + title + " → failed (" + S.selLog.join(", ") + ")");
   }
   async function play(uri) {
     if (uri) return selectTrack(uri);
@@ -322,14 +328,16 @@
   function injectStyle() {
     if (styleDone) return; styleDone = true;
     const st = document.createElement("style");
-    st.textContent = ".fm{margin-top:14px}.fm .fm-bar{display:flex;align-items:center;gap:8px}.fm .fm-btn{background:#2c3a5e;color:var(--ink,#f5eeda);border:none;border-radius:10px;padding:9px 12px;font-size:16px;cursor:pointer}.fm .fm-btn.main{background:var(--gold,#d4a72c);color:#141b2e;font-weight:700}.fm .fm-meta{flex:1;min-width:0}.fm .fm-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fm .fm-artist{color:var(--muted,#a8b4d4);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fm .fm-prog{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--muted,#a8b4d4)}.fm .fm-prog input{flex:1}.fm .fm-row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}.fm .fm-tog{background:#10182b;color:var(--muted,#a8b4d4);border:1px solid #2c3a5e;border-radius:999px;padding:6px 12px;cursor:pointer;font-size:13px}.fm .fm-tog.on{color:var(--gold,#d4a72c);border-color:var(--gold,#d4a72c)}.fm .fm-status{margin-top:10px;color:var(--gold,#d4a72c);font-size:13px}.fm ol.fm-list{margin:12px 0 0;padding-left:20px;max-height:260px;overflow:auto}.fm .fm-track{display:flex;justify-content:space-between;gap:10px;padding:6px 4px;cursor:pointer;border-radius:8px}.fm .fm-track.current{color:var(--gold,#d4a72c);font-weight:700}.fm .fm-note{color:var(--muted,#a8b4d4);font-size:12px;margin-top:10px}";
+    st.textContent = ".fm{margin-top:14px}.fm .fm-bar{display:flex;align-items:center;gap:8px}.fm .fm-btn{background:#2c3a5e;color:var(--ink,#f5eeda);border:none;border-radius:10px;padding:9px 12px;font-size:16px;cursor:pointer}.fm .fm-btn.main{background:var(--gold,#d4a72c);color:#141b2e;font-weight:700}.fm .fm-meta{flex:1;min-width:0}.fm .fm-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fm .fm-artist{color:var(--muted,#a8b4d4);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fm .fm-prog{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--muted,#a8b4d4)}.fm .fm-prog input{flex:1}.fm .fm-row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}.fm .fm-tog{background:#10182b;color:var(--muted,#a8b4d4);border:1px solid #2c3a5e;border-radius:999px;padding:6px 12px;cursor:pointer;font-size:13px}.fm .fm-tog.on{color:var(--gold,#d4a72c);border-color:var(--gold,#d4a72c)}.fm .fm-status{margin-top:10px;color:var(--gold,#d4a72c);font-size:13px}.fm .fm-log{margin-top:6px;color:var(--muted,#a8b4d4);font-size:12px}.fm ol.fm-list{margin:12px 0 0;padding-left:20px;max-height:260px;overflow:auto}.fm .fm-track{display:flex;justify-content:space-between;gap:10px;padding:6px 4px;cursor:pointer;border-radius:8px}.fm .fm-track.current{color:var(--gold,#d4a72c);font-weight:700}.fm .fm-note{color:var(--muted,#a8b4d4);font-size:12px;margin-top:10px}";
     document.head.appendChild(st);
   }
   const fmt = (s) => { if (!isFinite(s) || s < 0) s = 0; s = Math.round(s); return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2); };
   const q = (cls) => (S.root ? S.root.querySelector("." + cls) : null);
   function setStatus(msg) { const e = q("fm-status"); if (e) e.textContent = msg || ""; }
+  function logAction(msg) { S.lastAction = msg; const e = q("fm-log"); if (e) e.textContent = msg; }
   function progressNow() { return S.isPlaying ? Math.min(S.durationMs, S.progressMs + (Date.now() - S.anchorAt)) : S.progressMs; }
   function paint() {
+    const lg = q("fm-log"); if (lg && S.lastAction) lg.textContent = S.lastAction;
     if (!S.root) return;
     const setup = q("fm-setup"), body = q("fm-body");
     if (!connected()) { if (setup) setup.style.display = "block"; if (body) body.style.display = "none"; return; }
@@ -399,10 +407,10 @@
       '<div class="fm-prog"><span class="fm-cur">0:00</span><input type="range" class="fm-seek" min="0" max="1000" value="0" aria-label="Seek"><span class="fm-dur">0:00</span></div>' +
       '<div class="fm-row"><button class="fm-tog fm-shuffle">🔀 Shuffle</button><button class="fm-tog fm-repeat">🔁 All</button>' +
       '<label class="muted" style="font-size:13px">Volume <input type="range" class="fm-vol" min="0" max="100" value="90" style="vertical-align:middle"></label></div>' +
-      '<div class="fm-status"></div>' +
+      '<div class="fm-status"></div><div class="fm-log"></div>' +
       '<div class="fm-info muted" style="font-size:12px;margin-top:4px"></div>' +
       '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-5.1</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5B-5.2</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
