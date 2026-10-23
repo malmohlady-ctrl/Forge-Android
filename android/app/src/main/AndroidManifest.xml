@@ -22,6 +22,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- U5 spike: Spotify PKCE callback (scheme = production appId string by design) -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.malmohlady.theforge" android:host="spotify-callback" />
+            </intent-filter>
+
         </activity>
 
         <provider
