@@ -49,9 +49,18 @@ function couchData() {
 
 /* ---------- Home Corner (basementbelt.v1) ---------- */
 const CORNER_MODULES = {dumbbell: "Dumbbell Circuit", boxing: "Championship Rounds", core: "Core Finisher"};
+function nativeRecords(discipline) {
+  /* [U1] records written by the unified app's own modules + the legacy
+     importer live in DB.imported; they merge with the legacy stores here. */
+  const all = (typeof DB !== "undefined" && Array.isArray(DB.imported)) ? DB.imported : [];
+  return discipline ? all.filter(r => r.discipline === discipline) : all;
+}
 function cornerData() {
   const st = readStore("basementbelt.v1");
-  const entries = (st && Array.isArray(st.completed)) ? st.completed : [];
+  const legacy = (st && Array.isArray(st.completed)) ? st.completed : [];
+  const entries = legacy.concat(nativeRecords("train").map(r => ({
+    module: r.module || "laceup", name: r.title || r.name || "Lace Up",
+    date: r.date, timestamp: r.timestamp, minutes: r.minutes, durationSec: r.durationSec })));
   const wk = weekDates();
   const byModule = {};
   let mins = 0, weekDone = 0, last = null;
@@ -96,6 +105,10 @@ function unifiedHistory(limit) {
   for (const e of y.entries) out.push({id: "yoga:" + (e.key || e.timestamp), source: "yoga", app: "Namastay Home",
     name: e.title || "Yoga session", date: e.date, ts: e.timestamp || Date.parse(e.date) || 0,
     durationSec: e.durationSec || 0, status: "completed", meta: ""});
+  for (const r of nativeRecords()) out.push({id: r.id, source: r.discipline === "train" ? "corner" : r.discipline === "run" ? "couch" : "yoga",
+    app: r.discipline === "train" ? "Lace Up" : r.discipline === "run" ? "Couch to 5K" : "Namastay Home",
+    name: r.title || "Session", date: r.date, ts: r.timestamp || Date.parse(r.date) || 0,
+    durationSec: r.durationSec || 0, status: r.status || "completed", meta: r.source === "native" ? "in The Forge" : "imported"});
   for (const s of DB.sessions) out.push({id: "forge:" + s.id, source: "forge", app: "Forge player",
     name: s.title || "Workout", date: s.date, ts: Date.parse(s.date) || 0,
     durationSec: (s.mins || 0) * 60, status: "completed", meta: "built-in player"});
