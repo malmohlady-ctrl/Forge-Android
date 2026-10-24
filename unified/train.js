@@ -220,6 +220,7 @@
       title: MODULE.name, status: "completed", module: "laceup", name: MODULE.name,
     });
     saveDB();
+    if (window.ForgeNotify) window.ForgeNotify.reconcile("completion");
   }
   function syncControls() {
     const sb = $("trStartBtn"), pb = $("trPauseBtn"), sk = $("trSkipBtn");
