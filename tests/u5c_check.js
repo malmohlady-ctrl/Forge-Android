@@ -52,5 +52,14 @@ lsData["spotify.music.tokens"] = JSON.stringify({ access: "tok1", refresh: "ref"
   assert.strictEqual(targets[1].artist, "B1, B2");
   ok("diagLoadTargets: /items parsed (both item shapes), null entries dropped");
 
+  // regression (device-found, 2026-10-23): an /items payload larger than
+  // 8000 chars must still parse — rawApi truncation corrupted it on-device
+  const bigItem = { item: { uri: "spotify:track:BIG", name: "Big " + "x".repeat(12000), artists: [{ name: "A" }] } };
+  global.fetch = async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ items: [bigItem] }), json: async () => ({}) });
+  const big = await T.diagLoadTargets();
+  assert.strictEqual(big.length, 1);
+  assert.strictEqual(big[0].uri, "spotify:track:BIG");
+  ok("diagLoadTargets: oversized (>8000 char) payload parses — truncation regression closed");
+
   console.log("U5C tests: " + pass + " passed");
 })().catch((e) => { console.error(e); process.exit(1); });
