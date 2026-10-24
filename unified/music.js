@@ -143,7 +143,7 @@
     S.isPlaying = !!p.is_playing;
     S.shuffle = !!p.shuffle_state;
     S.repeat = p.repeat_state || "off";
-    if (p.item) { S.currentUri = p.item.uri; S.durationMs = p.item.duration_ms || 0; S.nowTitle = p.item.name || ""; S.nowArtist = (p.item.artists || []).map((a) => a.name).join(", "); }
+    if (p.item) { S.currentUri = p.item.uri; S.durationMs = p.item.duration_ms || 0; S.nowTitle = p.item.name || ""; S.nowArtist = (p.item.artists || []).map((a) => a.name).join(", "); S.artUrl = (p.item.album && p.item.album.images && p.item.album.images[0]) ? p.item.album.images[0].url : ""; } else { S.artUrl = ""; }
     S.progressMs = p.progress_ms || 0;
     S.anchorAt = Date.now();
   }
@@ -362,22 +362,8 @@
     const sh = q("fm-shuffle"); if (sh) sh.classList.toggle("on", S.shuffle);
     const rp = q("fm-repeat");
     if (rp) { rp.textContent = S.repeat === "track" ? "🔂 One" : S.repeat === "off" ? "🔁 Off" : "🔁 All"; rp.classList.toggle("on", S.repeat !== "off"); }
-    const list = q("fm-list");
-    const listKey = S.module + "|" + S.tracks.length + "|" + (S.tracks[0] ? S.tracks[0].uri : "") + "|" + (S.tracks[S.tracks.length - 1] ? S.tracks[S.tracks.length - 1].uri : "") + "|" + S.currentUri;
-    if (list && listKey !== S.listKey) {
-      S.listKey = listKey;
-      list.innerHTML = "";
-      for (const tr of S.tracks) {
-        const li = document.createElement("li");
-        li.className = "fm-track" + (tr.uri === S.currentUri ? " current" : "");
-        const n = document.createElement("span"); n.textContent = tr.title + (tr.artist ? " — " + tr.artist : "");
-        const d = document.createElement("span"); d.textContent = tr.duration ? fmt(tr.duration) : "";
-        li.appendChild(n); li.appendChild(d);
-        li.addEventListener("click", () => play(tr.uri));
-        list.appendChild(li);
-      }
-    }
-    drawProgress();
+    const art = q("fm-art");
+    if (art) { const u = S.artUrl || ""; if (u && art.getAttribute("src") !== u) art.src = u; art.style.display = u ? "block" : "none"; }
   }
   function drawProgress() {
     if (!S.root || S.seeking) return;
@@ -410,17 +396,17 @@
       '<button class="btn fm-connect">Set up Spotify once</button>' +
       '<p class="muted fm-cfghint" style="font-size:12px;margin-top:8px;display:none">First add your Spotify app in Settings → 🎧 Spotify.</p></div>' +
       '<div class="fm-body">' +
-      '<div class="fm-bar"><button class="fm-btn fm-prev" aria-label="Previous track">⏮</button>' +
-      '<button class="fm-btn main fm-play" aria-label="Play or pause">▶</button>' +
+      '<img class="fm-art" alt="" style="display:none;width:100%;border-radius:12px;margin-bottom:12px">' +
+      '<div class="fm-meta" style="text-align:center;margin-bottom:10px"><div class="fm-title">Loading…</div><div class="fm-artist"></div></div>' +
+      '<div class="fm-bar" style="justify-content:center;gap:12px">' +
+      '<button class="fm-tog fm-shuffle" aria-label="Shuffle">🔀</button>' +
+      '<button class="fm-btn fm-prev" aria-label="Previous track">⏮</button>' +
+      '<button class="fm-btn main fm-play" aria-label="Play or pause" style="font-size:20px;padding:12px 18px">▶</button>' +
       '<button class="fm-btn fm-next" aria-label="Next track">⏭</button>' +
-      '<div class="fm-meta"><div class="fm-title">Loading…</div><div class="fm-artist"></div></div></div>' +
-      '<div class="fm-prog"><span class="fm-cur">0:00</span><input type="range" class="fm-seek" min="0" max="1000" value="0" aria-label="Seek"><span class="fm-dur">0:00</span></div>' +
-      '<div class="fm-row"><button class="fm-tog fm-shuffle">🔀 Shuffle</button><button class="fm-tog fm-repeat">🔁 All</button>' +
-      '<label class="muted" style="font-size:13px">Volume <input type="range" class="fm-vol" min="0" max="100" value="90" style="vertical-align:middle"></label></div>' +
+      '<button class="fm-tog fm-repeat" aria-label="Repeat">🔁 All</button></div>' +
       '<div class="fm-status"></div><div class="fm-log"></div><div class="fm-wake"></div>' +
       '<div class="fm-info muted" style="font-size:12px;margin-top:4px"></div>' +
-      '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5C-3</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5E-1</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
@@ -436,32 +422,9 @@
       S.repeat = S.repeat === "context" ? "track" : S.repeat === "track" ? "off" : "context";
       paint(); await api("/me/player/repeat?state=" + S.repeat, "PUT");
     });
-    let volTimer = 0;
-    const vol = card.querySelector(".fm-vol");
-    vol.value = S.volume;
-    vol.addEventListener("input", (e) => {
-      S.volume = Number(e.target.value);
-      if (S.volDead) return;
-      clearTimeout(volTimer);
-      volTimer = setTimeout(async () => {
-        const r = await api("/me/player/volume?volume_percent=" + S.volume, "PUT").catch(() => null);
-        if (r && (r.status === 403 || r.status === 404)) { S.volDead = true; vol.disabled = true; vol.title = "Volume is controlled in the Spotify app for this device"; }
-      }, 250);
-    });
-    const seek = card.querySelector(".fm-seek");
-    seek.addEventListener("input", () => { S.seeking = true; });
-    seek.addEventListener("change", async () => {
-      S.seeking = false;
-      if (S.durationMs > 0) {
-        const ms = Math.round((seek.value / 1000) * S.durationMs);
-        S.progressMs = ms; S.anchorAt = Date.now(); drawProgress();
-        await api("/me/player/seek?position_ms=" + ms, "PUT");
-        setTimeout(refreshPlayback, 500);
-      }
-    });
     paint();
     if (connected()) {
-      (async () => { try { await accessToken(); } catch (e) { disconnect(); paint(); return; } loadPlaylist(); refreshPlayback(); chooseDevice(); startTimers(); })();
+      (async () => { try { await accessToken(); } catch (e) { disconnect(); paint(); return; } refreshPlayback(); startTimers(); })();
     }
   }
   function unmount() { stopTimers(); S.root = null; }
