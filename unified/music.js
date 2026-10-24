@@ -410,7 +410,7 @@
       '<div class="fm-status"></div><div class="fm-log"></div>' +
       '<div class="fm-info muted" style="font-size:12px;margin-top:4px"></div>' +
       '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5C-1</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5C-2</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
@@ -546,7 +546,7 @@
     let note = "";
     if (r.status === 401) { await refresh(); tk = await accessToken(); r = await send(tk); note = " (after 401 + token refresh)"; }
     const text = await r.text().catch(() => "");
-    return { status: r.status, text: text.slice(0, 8000), note };
+    return { status: r.status, text: text.slice(0, 200000), note };
   }
   const dgWait = (ms) => new Promise((res) => setTimeout(res, ms));
   async function diagNowPlaying(prefix) {
@@ -568,6 +568,7 @@
     const r = await rawApi("GET", "/me/player/devices");
     if (r.status !== 200) { diagLog("devices: HTTP " + r.status + " " + r.text.slice(0, 200)); return []; }
     const devs = (JSON.parse(r.text).devices) || [];
+    diagLog("DEVICES: HTTP " + r.status + " · " + devs.length + " in list" + (devs.length ? "" : " — Spotify is not active anywhere"));
     devs.forEach((d) => diagLog("device: \"" + d.name + "\" · type=" + d.type + " · active=" + d.is_active + " · restricted=" + d.is_restricted + " · id=" + d.id));
     return devs;
   }
