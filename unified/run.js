@@ -270,6 +270,7 @@
     DB.imported.push({ id: "run:" + entry.timestamp, source: "native", discipline: "run",
       title: "Week " + (entry.week + 1) + " · Run " + (entry.run + 1), ...entry });
     saveDB();
+    if (window.ForgeNotify) window.ForgeNotify.reconcile("completion");
   }
   function syncRunControls() {
     const sb = $("rnStartBtn"), pb = $("rnPauseBtn"), sk = $("rnSkipBtn");
