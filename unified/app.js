@@ -125,7 +125,7 @@ function show(view, origin) {
   if (origin) { el.style.setProperty("--zox", origin.x + "%"); el.style.setProperty("--zoy", origin.y + "%"); }
   el.classList.add("on");
   if (view === "home") el.classList.add("hubview");
-  const titles = {home: "", nutrition: "Nutrition", workouts: "Workouts", progress: "Progress", plan: "Plan", body: "Body", settings: "Settings", train: "Train — Lace Up", run: "Run — Couch to 5K", yoga: "Yoga — Namastay Home", diag: "U0 Diagnostics", music: "Spotify"};
+  const titles = {home: "", nutrition: "Nutrition", workouts: "Workouts", progress: "Progress", plan: "Plan", body: "Body", settings: "Settings", train: "Train — Lace Up", run: "Run — Couch to 5K", yoga: "Yoga — Namastay Home", diag: "U0 Diagnostics", music: "Spotify", reminders: "Reminders"};
   const tt = $("#topTitle");
   tt.textContent = titles[view] || "";
   tt.style.display = view === "home" ? "none" : "block";
@@ -133,7 +133,7 @@ function show(view, origin) {
   $("#topBar").style.display = view === "home" ? "none" : "block";
   ({home: renderHome, nutrition: window.renderNutrition, workouts: window.renderWorkouts,
     progress: window.renderProgress, plan: renderPlan, body: renderBody, settings: renderSettings,
-    train: window.renderTrain, run: window.renderRun, yoga: window.renderYoga, import: window.renderImport, diag: window.renderDiag, music: window.renderMusic}[view] || renderHome)();
+    train: window.renderTrain, run: window.renderRun, yoga: window.renderYoga, import: window.renderImport, diag: window.renderDiag, music: window.renderMusic, reminders: window.renderReminders}[view] || renderHome)();
   window.scrollTo(0, 0);
 }
 function hubGo(view, ev) {
@@ -502,6 +502,7 @@ function renderSettings() {
       <button class="btn ghost grow" id="dtImportData">⬆ Import data</button>
     <button class="btn ghost grow" id="dtImp">⬆ Import backup</button></div>
     <button class="btn ghost block" style="margin-top:10px" id="dtMusic">🎧 Spotify</button>
+    <button class="btn ghost block" style="margin-top:10px" id="dtRemind">🔔 Reminders</button>
     <input type="file" id="dtFile" accept="application/json" style="display:none">
     <button class="btn danger block" style="margin-top:10px" id="dtReset">Reset everything</button>
     <p class="small muted" style="margin-top:10px">${DB.entries.length} food entries · ${DB.foods.length} custom foods · ${DB.meals.length} saved meals · ${DB.weights.length} weigh-ins · ${DB.sessions.length} workouts logged</p>
@@ -534,6 +535,7 @@ function renderSettings() {
   $("#dtExp").onclick = exportData;
   const dtI = $("#dtImportData"); if (dtI) dtI.onclick = () => show("import");
   const dtS = $("#dtMusic"); if (dtS) dtS.onclick = () => show("music");
+  const dtR = $("#dtRemind"); if (dtR) dtR.onclick = () => show("reminders");
   $("#dtImp").onclick = () => $("#dtFile").click();
   $("#dtFile").onchange = e => importData(e.target.files[0]);
   $("#dtReset").onclick = () => confirmSheet("Reset The Forge?", "This deletes ALL data on this device — diary, weights, workouts, settings. Export a backup first if you might want it back.", "Delete everything", () => {
