@@ -316,6 +316,22 @@ T.setVerifyDelays([0, 0]);
     assert.ok(src.includes('ForgeMusic.mount("' + mod + '"'), file + " mounts ForgeMusic for " + mod);
   }
   ok("all three module views carry a music mount point + mount call");
+  // U5E simple card (his direction, 2026-10-23): no track list under the
+  // controls, no volume/seek — art + now-playing + transport only
+  {
+    const src = fs.readFileSync(path.join(__dirname, "..", "unified", "music.js"), "utf8");
+    assert.ok(!src.includes('<ol class="fm-list">'), "track list markup removed");
+    assert.ok(!src.includes("fm-vol"), "volume control removed (his phone reports supports_volume=false)");
+    assert.ok(!src.includes('class="fm-seek"'), "seek bar removed");
+    assert.ok(src.includes('class="fm-art"'), "album art slot present");
+    assert.ok(src.includes("build U5E-1"), "card stamps U5E-1");
+    T.applyPlayback({ device: { id: "d1", name: "Phone" }, is_playing: true, shuffle_state: true, repeat_state: "context", progress_ms: 1000, context: { uri: "spotify:playlist:X" }, item: { uri: "spotify:track:Z", name: "Zed", duration_ms: 200000, artists: [{ name: "Artiste" }], album: { images: [{ url: "https://img/z.jpg" }] } } });
+    assert.strictEqual(S.artUrl, "https://img/z.jpg");
+    assert.strictEqual(S.nowTitle, "Zed");
+    assert.strictEqual(S.nowArtist, "Artiste");
+  }
+  ok("U5E simple card: art + now-playing from state; list/volume/seek markup gone");
+
   console.log("U5B tests: " + pass + " passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
