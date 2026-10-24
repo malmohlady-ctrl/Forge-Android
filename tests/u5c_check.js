@@ -61,5 +61,12 @@ lsData["spotify.music.tokens"] = JSON.stringify({ access: "tok1", refresh: "ref"
   assert.strictEqual(big[0].uri, "spotify:track:BIG");
   ok("diagLoadTargets: oversized (>8000 char) payload parses — truncation regression closed");
 
+  // U5C-3 probes: the three switch mechanisms must be wired in the panel
+  const src = fs.readFileSync(path.join(__dirname, "..", "unified", "music.js"), "utf8");
+  for (const probe of ["dgF", "dgG", "dgH"]) assert.ok(src.includes('id="' + probe + '"') && src.includes('on("' + probe + '"'), probe + " button + handler wired");
+  assert.ok(src.includes("/me/player/queue?uri="), "F queues the target");
+  assert.ok(src.includes('rawApi("POST", "/me/player/next")'), "F skips to the queued target");
+  ok("U5C-3 probes F (queue+next), G (pause-then-play), H (play-wait-play) wired");
+
   console.log("U5C tests: " + pass + " passed");
 })().catch((e) => { console.error(e); process.exit(1); });
