@@ -217,6 +217,28 @@ function settings(patch) { return FN.saveSettings(Object.assign({ enabled: true,
     ok("16. U0–U5 records, hooks and surfaces intact (full chain runs in CI)");
   }
 
+  /* 17 — instant test notification: real content, fires ~5 s out, invisible to the reconciler */
+  {
+    fake.reset(); DB.imported = []; settings({});
+    await FN.reconcile("test");
+    const before = fake.pending.size;
+    const r = await FN.testNotification();
+    assert.strictEqual(r.ok, true);
+    const tn = fake.pending.get(FN.TEST_ID);
+    assert.ok(tn, "test notification pending");
+    assert.strictEqual(tn.title, "Train — Lace Up"); assert.strictEqual(tn.body, FN.META.train.body);
+    assert.strictEqual(tn.extra.module, "train"); assert.ok(!tn.extra.forgeReminder, "not a rotation reminder");
+    const dt = new Date(tn.schedule.at).getTime() - Date.now();
+    assert.ok(dt > 3000 && dt <= 6000, "fires ~5s out: " + dt);
+    await FN.reconcile("test");
+    assert.ok(fake.pending.has(FN.TEST_ID), "reconciler never cancels the test notification");
+    assert.strictEqual(fake.pending.size, before + 1, "schedule otherwise unchanged");
+    fake.perm = "denied"; fake.permMode = "deny"; FN.saveSettings({ permAsked: true });
+    const r2 = await FN.testNotification();
+    assert.strictEqual(r2.ok, false); assert.strictEqual(r2.reason, "denied");
+    ok("17. instant test button: real Train reminder in ~5 s; reconciler-proof; denial reported, not faked");
+  }
+
   console.log("U6 tests: " + pass + " passed");
   process.exit(0);
 })().catch((e) => { console.error(e); process.exit(1); });
