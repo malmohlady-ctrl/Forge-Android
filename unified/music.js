@@ -138,7 +138,7 @@
   const playlistId = () => (PLAYLISTS[S.module] || {}).id || "";
   function applyPlayback(p) {
     if (!p) return;
-    if (p.device) { S.deviceId = p.device.id; S.deviceName = p.device.name || ""; }
+    if (p.device) { S.deviceId = p.device.id; S.deviceName = p.device.name || ""; S.wakeUri = null; }
     S.contextUri = (p.context && p.context.uri) || "";
     S.isPlaying = !!p.is_playing;
     S.shuffle = !!p.shuffle_state;
@@ -211,7 +211,7 @@
   async function errText(r) { try { const j = await r.json(); return (j && j.error && j.error.message) || ""; } catch (e) { return ""; } }
   function failStatus(what, status, msg) { S.lastStatus = what + " failed (" + status + (msg ? ": " + msg : "") + ")."; setStatus(S.lastStatus); }
   const wait = (ms) => new Promise((res) => setTimeout(res, ms));
-  let verifyDelays = [650, 900];
+  let verifyDelays = [1200, 2500];
   function describeAttempt(label, r) {
     if (!r) return label + ": not tried";
     if (r.status === -1) return label + ": network error (" + (r.msg || "request failed") + ")";
@@ -259,44 +259,50 @@
     const mine = () => sel.seq === S.selSeq && S.module === mod;
     setStatus("Starting " + title + "…");
     logAction("Last tap: " + title + " — trying…");
-    // PRIMARY: direct play of the exact URI. No context, no offset — shuffle
-    // and queue state cannot substitute a different song for the tapped one.
-    let b = await tryPlay({ uris: [uri] }, false);
-    S.selLog.push("direct -> " + b.status);
-    if (!mine()) return;
-    if (!b.ok && b.status === 404) {
-      b = await tryPlay({ uris: [uri] }, true);
-      S.selLog.push("direct (device) -> " + b.status);
-      if (!mine()) return;
-    }
-    if (b.ok) {
-      const v2 = await verifySelected(sel);
-      if (!mine()) return;
-      if (v2 === "confirmed") { S.lastSel = { uri, via: "direct", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title; setStatus(S.lastStatus); logAction("Last tap: " + title + " → ✓ playing (direct)"); setTimeout(refreshPlayback, 400); return; }
-      S.selLog.push("direct accepted, track not confirmed");
-    }
-    if (!mine()) return;
-    // SECOND: playlist context + offset (keeps the playlist playing after).
+    // U5D — built ONLY on what the U5C panel proved on his phone: with an
+    // active device, implicit playlist-jump (B) and implicit direct (A) both
+    // return 204 and the tapped track plays. Naming a device_id (C) or
+    // transferring playback (D) returns 204 while EMPTYING the session —
+    // so no play call ever names a device, and nothing transfers.
     let a = await tryPlay({ context_uri: "spotify:playlist:" + sel.pid, offset: { uri } }, false);
-    S.selLog.push("context+offset -> " + a.status);
+    S.selLog.push("playlist jump -> " + a.status);
     if (!mine()) return;
-    if (!a.ok && a.status === 404) {
-      a = await tryPlay({ context_uri: "spotify:playlist:" + sel.pid, offset: { uri } }, true);
-      S.selLog.push("context+offset (device) -> " + a.status);
-      if (!mine()) return;
-    }
     if (a.ok) {
       const v = await verifySelected(sel);
       if (!mine()) return;
-      if (v === "confirmed") { S.lastSel = { uri, via: "context", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title + " (via playlist)"; setStatus(S.lastStatus); logAction("Last tap: " + title + " → ✓ playing (via playlist)"); setTimeout(refreshPlayback, 400); return; }
+      if (v === "confirmed") { S.wakeUri = null; S.lastSel = { uri, via: "playlist", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title; setStatus(S.lastStatus); logAction("Last tap: " + title + " → ✓ playing (playlist, HTTP " + a.status + ")"); setTimeout(refreshPlayback, 400); return; }
+      S.selLog.push("playlist jump accepted, track not confirmed");
+    }
+    if (!mine()) return;
+    let b = await tryPlay({ uris: [uri] }, false);
+    S.selLog.push("direct -> " + b.status);
+    if (!mine()) return;
+    if (b.ok) {
+      const v2 = await verifySelected(sel);
+      if (!mine()) return;
+      if (v2 === "confirmed") { S.wakeUri = null; S.lastSel = { uri, via: "direct", playing: S.isPlaying }; S.lastStatus = "✓ Playing: " + title + " (direct)"; setStatus(S.lastStatus); logAction("Last tap: " + title + " → ✓ playing (direct, HTTP " + b.status + ")"); setTimeout(refreshPlayback, 400); return; }
       S.lastSel = { uri, via: null, result: "unconfirmed" };
-      S.lastStatus = "Spotify accepted the request but didn't start \"" + title + "\". Open the Spotify app once, then tap again.";
+      S.lastStatus = "Spotify accepted the request but didn't start \"" + title + "\". Give it a second and tap again.";
       setStatus(S.lastStatus);
-      logAction("Last tap: " + title + " → accepted, but Spotify never started it");
+      logAction("Last tap: " + title + " → accepted, but Spotify never started it (" + S.selLog.join(", ") + ")");
+      return;
+    }
+    // Both refused. The panel-proven asleep case (404 NO_ACTIVE_DEVICE, zero
+    // devices) gets the one-tap wake link instead of a dead-end error.
+    let devCount = -1;
+    try { const dr = await rawApi("GET", "/me/player/devices"); const dj = JSON.parse(dr.text); devCount = ((dj && dj.devices) || []).length; } catch (e) { /* unknown — plain error below */ }
+    if (!mine()) return;
+    if (devCount === 0 || a.status === 404 || b.status === 404) {
+      S.wakeUri = uri; S.wakeTitle = title;
+      S.lastSel = { uri, via: "wake", result: "no-device" };
+      S.lastStatus = "Spotify is asleep — one tap below opens it on \"" + title + "\".";
+      setStatus(S.lastStatus);
+      logAction("Last tap: " + title + " → Spotify asleep (no device) — wake link shown");
+      paint();
       return;
     }
     S.lastSel = { uri, via: null, result: "failed" };
-    S.lastStatus = "Couldn't start \"" + title + "\" — " + describeAttempt("direct play", b) + "; " + describeAttempt("playlist start", a) + ".";
+    S.lastStatus = "Couldn't start \"" + title + "\" — " + describeAttempt("playlist jump", a) + "; " + describeAttempt("direct play", b) + ".";
     setStatus(S.lastStatus);
     logAction("Last tap: " + title + " → failed (" + S.selLog.join(", ") + ")");
   }
@@ -308,13 +314,12 @@
       setStatus("");
       const body = playBody(undefined);
       let r = await tryPlay(body, false);
-      if (!r.ok && r.status === 404) r = await tryPlay(body, true);
       if (!r.ok) {
-        if (r.status === 404) setStatus("No Spotify device found. Open the Spotify app on your phone once, then tap play again.");
-        else if (r.status === 0) setStatus("No Spotify device found. Open the Spotify app on your phone once, then tap play again.");
+        if (r.status === 404 || r.status === 0) { S.wakeUri = "spotify:playlist:" + PLAYLISTS[S.module].id; S.wakeTitle = PLAYLISTS[S.module].label; setStatus("Spotify is asleep — one tap below opens the playlist in Spotify."); paint(); }
         else failStatus("Play", r.status, r.msg);
         return;
       }
+      S.wakeUri = null;
       setTimeout(refreshPlayback, 700);
     } catch (e) { S.lastStatus = "Play failed: " + e.message; setStatus(S.lastStatus); }
   }
@@ -328,7 +333,7 @@
   function injectStyle() {
     if (styleDone) return; styleDone = true;
     const st = document.createElement("style");
-    st.textContent = ".fm{margin-top:14px}.fm .fm-bar{display:flex;align-items:center;gap:8px}.fm .fm-btn{background:#2c3a5e;color:var(--ink,#f5eeda);border:none;border-radius:10px;padding:9px 12px;font-size:16px;cursor:pointer}.fm .fm-btn.main{background:var(--gold,#d4a72c);color:#141b2e;font-weight:700}.fm .fm-meta{flex:1;min-width:0}.fm .fm-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fm .fm-artist{color:var(--muted,#a8b4d4);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fm .fm-prog{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--muted,#a8b4d4)}.fm .fm-prog input{flex:1}.fm .fm-row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}.fm .fm-tog{background:#10182b;color:var(--muted,#a8b4d4);border:1px solid #2c3a5e;border-radius:999px;padding:6px 12px;cursor:pointer;font-size:13px}.fm .fm-tog.on{color:var(--gold,#d4a72c);border-color:var(--gold,#d4a72c)}.fm .fm-status{margin-top:10px;color:var(--gold,#d4a72c);font-size:13px}.fm .fm-log{margin-top:6px;color:var(--muted,#a8b4d4);font-size:12px}.fm ol.fm-list{margin:12px 0 0;padding-left:20px;max-height:260px;overflow:auto}.fm .fm-track{display:flex;justify-content:space-between;gap:10px;padding:6px 4px;cursor:pointer;border-radius:8px}.fm .fm-track.current{color:var(--gold,#d4a72c);font-weight:700}.fm .fm-note{color:var(--muted,#a8b4d4);font-size:12px;margin-top:10px}";
+    st.textContent = ".fm{margin-top:14px}.fm .fm-bar{display:flex;align-items:center;gap:8px}.fm .fm-btn{background:#2c3a5e;color:var(--ink,#f5eeda);border:none;border-radius:10px;padding:9px 12px;font-size:16px;cursor:pointer}.fm .fm-btn.main{background:var(--gold,#d4a72c);color:#141b2e;font-weight:700}.fm .fm-meta{flex:1;min-width:0}.fm .fm-title{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fm .fm-artist{color:var(--muted,#a8b4d4);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fm .fm-prog{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:var(--muted,#a8b4d4)}.fm .fm-prog input{flex:1}.fm .fm-row{display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap}.fm .fm-tog{background:#10182b;color:var(--muted,#a8b4d4);border:1px solid #2c3a5e;border-radius:999px;padding:6px 12px;cursor:pointer;font-size:13px}.fm .fm-tog.on{color:var(--gold,#d4a72c);border-color:var(--gold,#d4a72c)}.fm .fm-status{margin-top:10px;color:var(--gold,#d4a72c);font-size:13px}.fm .fm-log{margin-top:6px;color:var(--muted,#a8b4d4);font-size:12px}.fm .fm-wake a{display:inline-block;margin-top:8px;background:var(--gold,#d4a72c);color:#141b2e;font-weight:700;border-radius:10px;padding:9px 14px;text-decoration:none}.fm ol.fm-list{margin:12px 0 0;padding-left:20px;max-height:260px;overflow:auto}.fm .fm-track{display:flex;justify-content:space-between;gap:10px;padding:6px 4px;cursor:pointer;border-radius:8px}.fm .fm-track.current{color:var(--gold,#d4a72c);font-weight:700}.fm .fm-note{color:var(--muted,#a8b4d4);font-size:12px;margin-top:10px}";
     document.head.appendChild(st);
   }
   const fmt = (s) => { if (!isFinite(s) || s < 0) s = 0; s = Math.round(s); return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2); };
@@ -338,6 +343,11 @@
   function progressNow() { return S.isPlaying ? Math.min(S.durationMs, S.progressMs + (Date.now() - S.anchorAt)) : S.progressMs; }
   function paint() {
     const lg = q("fm-log"); if (lg && S.lastAction) lg.textContent = S.lastAction;
+    const wk = q("fm-wake");
+    if (wk) {
+      if (S.wakeUri) { const isPl = S.wakeUri.indexOf("playlist:") > -1; const wid = S.wakeUri.split(":").pop(); wk.innerHTML = '<a href="https://open.spotify.com/' + (isPl ? "playlist/" : "track/") + wid + '">▶ Open in Spotify — it was asleep</a>'; }
+      else if (wk.innerHTML) wk.innerHTML = "";
+    }
     if (!S.root) return;
     const setup = q("fm-setup"), body = q("fm-body");
     if (!connected()) { if (setup) setup.style.display = "block"; if (body) body.style.display = "none"; return; }
@@ -389,7 +399,7 @@
     if (!el || !PLAYLISTS[module]) return;
     migrate(); installHook();
     injectStyle();
-    S.module = module; S.tracks = []; S.root = el;
+    S.module = module; S.tracks = []; S.root = el; S.wakeUri = null;
     el.innerHTML = "";
     const card = document.createElement("div");
     card.className = "card fm";
@@ -407,10 +417,10 @@
       '<div class="fm-prog"><span class="fm-cur">0:00</span><input type="range" class="fm-seek" min="0" max="1000" value="0" aria-label="Seek"><span class="fm-dur">0:00</span></div>' +
       '<div class="fm-row"><button class="fm-tog fm-shuffle">🔀 Shuffle</button><button class="fm-tog fm-repeat">🔁 All</button>' +
       '<label class="muted" style="font-size:13px">Volume <input type="range" class="fm-vol" min="0" max="100" value="90" style="vertical-align:middle"></label></div>' +
-      '<div class="fm-status"></div><div class="fm-log"></div>' +
+      '<div class="fm-status"></div><div class="fm-log"></div><div class="fm-wake"></div>' +
       '<div class="fm-info muted" style="font-size:12px;margin-top:4px"></div>' +
       '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5C-2</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5D-1</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
