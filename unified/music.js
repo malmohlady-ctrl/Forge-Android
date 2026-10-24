@@ -420,7 +420,7 @@
       '<div class="fm-status"></div><div class="fm-log"></div><div class="fm-wake"></div>' +
       '<div class="fm-info muted" style="font-size:12px;margin-top:4px"></div>' +
       '<ol class="fm-list"></ol>' +
-      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5D-1</p>' +
+      '<p class="fm-note">Plays in your Spotify app · playlist: ' + PLAYLISTS[module].label + ' · build U5C-3</p>' +
       "</div>";
     el.appendChild(card);
     S.root = card;
@@ -508,7 +508,7 @@
       </div>
       <div class="card" style="padding:16px;margin-top:14px">
         <div style="font-weight:700;margin-bottom:6px">Selection diagnostics — U5C</div>
-        <p class="small muted" style="line-height:1.5;margin:4px 0">Measurement only — nothing here is the finished player. Pick the target song, then run A–D one at a time. Every answer Spotify gives is printed RAW in the log below. For E, tap a link, watch what Spotify does, come back and tap State.</p>
+        <p class="small muted" style="line-height:1.5;margin:4px 0">Measurement only — nothing here is the finished player. Pick a target DIFFERENT from what's playing in Spotify, then run the probes one at a time. Every answer Spotify gives is printed RAW in the log below. For E, tap a link, watch what Spotify does, come back and tap State.</p>
         <div id="dgTargets" style="margin:8px 0"></div>
         <div class="row" style="flex-wrap:wrap;gap:8px">
           <button class="btn grow" id="dgState">① State + devices</button>
@@ -516,6 +516,9 @@
           <button class="btn grow" id="dgB">B · Playlist jump</button>
           <button class="btn grow" id="dgC">C · Direct + device</button>
           <button class="btn grow" id="dgD">D · Transfer, then play</button>
+          <button class="btn grow" id="dgF">F · Queue + next</button>
+          <button class="btn grow" id="dgG">G · Pause, then play</button>
+          <button class="btn grow" id="dgH">H · Play, wait 6s, play again</button>
           <button class="btn ghost grow" id="dgClear">Clear log</button>
         </div>
         <p class="small" style="margin:10px 0 4px">E · Open the target in the Spotify app itself:</p>
@@ -609,6 +612,9 @@
     on("dgB", async () => { if (!needTarget()) return; const r = await rawApi("PUT", "/me/player/play", { context_uri: "spotify:playlist:" + PLAYLISTS.run.id, offset: { uri: diagTarget.uri } }); diagLog("B playlist jump {context+offset}: HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("B"); });
     on("dgC", async () => { if (!needTarget()) return; const devs = await diagDevices(); const d = pickPhone(devs); if (!d) { diagLog("C: no device in the list — open Spotify once and retry."); return; } const r = await rawApi("PUT", "/me/player/play?device_id=" + encodeURIComponent(d.id), { uris: [diagTarget.uri] }); diagLog("C direct + device_id (" + d.name + "): HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("C"); });
     on("dgD", async () => { if (!needTarget()) return; const devs = await diagDevices(); const d = pickPhone(devs); if (!d) { diagLog("D: no device in the list — open Spotify once and retry."); return; } const t = await rawApi("PUT", "/me/player", { device_ids: [d.id], play: false }); diagLog("D transfer to " + d.name + ": HTTP " + t.status + t.note + " " + (t.text.slice(0, 300) || "(empty body)")); await dgWait(1500); const r = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("D then direct play: HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("D"); });
+    on("dgF", async () => { if (!needTarget()) return; const q = await rawApi("POST", "/me/player/queue?uri=" + encodeURIComponent(diagTarget.uri)); diagLog("F queue add: HTTP " + q.status + q.note + " " + (q.text.slice(0, 300) || "(empty body)")); await dgWait(800); const n = await rawApi("POST", "/me/player/next"); diagLog("F next: HTTP " + n.status + n.note + " " + (n.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("F"); });
+    on("dgG", async () => { if (!needTarget()) return; const pz = await rawApi("PUT", "/me/player/pause"); diagLog("G pause: HTTP " + pz.status + pz.note + " " + (pz.text.slice(0, 300) || "(empty body)")); await dgWait(2000); const r = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("G then direct play: HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("G"); });
+    on("dgH", async () => { if (!needTarget()) return; const r1 = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("H play #1: HTTP " + r1.status + r1.note + " " + (r1.text.slice(0, 300) || "(empty body)")); await dgWait(6000); await diagDevices(); const r2 = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("H play #2 (6s later): HTTP " + r2.status + r2.note + " " + (r2.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("H"); });
     diagLoadTargets().then((tracks) => {
       const host = document.getElementById("dgTargets");
       if (host) {
