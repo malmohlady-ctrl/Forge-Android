@@ -67,8 +67,8 @@ T.setVerifyDelays([0, 0]);
   await T.play("spotify:track:T2");
   const playCall = calls.find((c) => c.url.includes("/me/player/play"));
   assert.ok(playCall && playCall.method === "PUT" && !playCall.url.includes("device_id") && playCall.auth === "Bearer tok", "first play attempt addresses the active device implicitly, like pause/next");
-  assert.deepStrictEqual(JSON.parse(playCall.body), { uris: ["spotify:track:T2"] });
-  ok("play(): PUT /me/player/play with a direct exact-URI body and bearer token (no device_id on first attempt)");
+  assert.deepStrictEqual(JSON.parse(playCall.body), { context_uri: "spotify:playlist:3ETB46pxe9p8uaCgji0xbY", offset: { uri: "spotify:track:T2" } });
+  ok("play(): PUT /me/player/play with the playlist-jump body and bearer auth (implicit device, always)");
   await T.pausePlayback();
   const pauseCall = calls.find((c) => c.url.endsWith("/me/player/pause"));
   assert.ok(pauseCall && pauseCall.method === "PUT");
@@ -127,7 +127,7 @@ T.setVerifyDelays([0, 0]);
       const u = String(url);
       if (u.includes("/me/player/play")) {
         bodies.push(opts.body ? JSON.parse(opts.body) : null);
-        if (opts.body && opts.body.includes("uris")) return { ok: false, status: 403, json: async () => ({ error: { status: 403, message: "Restriction violated" } }) };
+        if (opts.body && opts.body.includes("offset")) return { ok: false, status: 403, json: async () => ({ error: { status: 403, message: "Restriction violated" } }) };
         return { ok: true, status: 204, json: async () => ({}) };
       }
       if (u.includes("/me/player/devices")) return { ok: true, status: 200, json: async () => ({ devices: [{ id: "dev9", type: "Smartphone", is_active: true }] }) };
@@ -136,31 +136,36 @@ T.setVerifyDelays([0, 0]);
     };
     S.module = "run"; S.deviceId = "dev9"; S.tracks = [{ uri: "spotify:track:T2", title: "T2" }]; S.currentUri = null; S.lastStatus = "";
     await T.play("spotify:track:T2");
-    assert.strictEqual(bodies.length, 2, "direct attempt + context attempt");
-    assert.deepStrictEqual(bodies[0], { uris: ["spotify:track:T2"] }, "attempt A is a direct play of the exact tapped URI");
-    assert.ok(bodies[1].offset && bodies[1].offset.uri === "spotify:track:T2" && bodies[1].context_uri === "spotify:playlist:3ETB46pxe9p8uaCgji0xbY", "attempt B is the run playlist jump to the same URI");
+    assert.strictEqual(bodies.length, 2, "playlist jump + direct attempt");
+    assert.ok(bodies[0].offset && bodies[0].offset.uri === "spotify:track:T2" && bodies[0].context_uri === "spotify:playlist:3ETB46pxe9p8uaCgji0xbY", "attempt A is the run playlist jump to the exact tapped URI");
+    assert.deepStrictEqual(bodies[1], { uris: ["spotify:track:T2"] }, "attempt B is a direct play of the exact same URI");
     assert.ok(!bodies.some((b) => b && b.context_uri && !b.offset && !b.uris), "a bare playlist start is NEVER substituted for the requested song");
-    assert.strictEqual(S.lastSel.via, "context");
-    assert.ok(S.selLog.join(" ").includes("direct -> 403") && S.selLog.join(" ").includes("context+offset -> 204"), "per-attempt statuses captured: " + S.selLog.join(", "));
-    console.log("  ✓ selection ladder: direct refused (403) -> playlist jump to the exact URI, confirmed; no playlist substitution");
+    assert.strictEqual(S.lastSel.via, "direct");
+    assert.ok(S.selLog.join(" ").includes("playlist jump -> 403") && S.selLog.join(" ").includes("direct -> 204"), "per-attempt statuses captured: " + S.selLog.join(", "));
+    console.log("  ✓ selection ladder: playlist jump refused (403) -> direct play of the exact URI, confirmed; no playlist substitution");
     pass++;
   }
 
-  // play(): a 404 on the implicit-device attempt retries against a chosen device
+  // U5D (panel-proven): a 404 with zero devices -> the WAKE outcome, and no
+  // play call ever names a device_id (explicit device targeting empties the
+  // session on his phone — U5C buttons C/D)
   {
     const playUrls = [];
     global.fetch = async (url, opts = {}) => {
       const u = String(url);
-      if (u.includes("/me/player/play")) { playUrls.push(u); return playUrls.length === 1 ? { ok: false, status: 404, json: async () => ({}) } : { ok: true, status: 204, json: async () => ({}) }; }
-      if (u.includes("/me/player/devices")) return { ok: true, status: 200, json: async () => ({ devices: [{ id: "dev9", type: "Smartphone", is_active: true }] }) };
-      if (u.includes("/me/player")) return { ok: true, status: 200, json: async () => ({ device: { id: "dev9" }, is_playing: true, progress_ms: 1, item: { uri: "spotify:track:T2", duration_ms: 1000 } }) };
-      return { ok: true, status: 200, json: async () => ({}) };
+      if (u.includes("/me/player/play")) { playUrls.push(u); return { ok: false, status: 404, text: async () => "{}", json: async () => ({ error: { status: 404, message: "No active device found" } }) }; }
+      if (u.includes("/me/player/devices")) return { ok: true, status: 200, text: async () => JSON.stringify({ devices: [] }), json: async () => ({ devices: [] }) };
+      if (u.includes("/me/player")) return { ok: true, status: 200, text: async () => "", json: async () => ({ device: { id: "dev9" }, is_playing: false, progress_ms: 0, item: null }) };
+      return { ok: true, status: 200, text: async () => "", json: async () => ({}) };
     };
-    S.module = "run"; S.deviceId = null; S.tracks = [{ uri: "spotify:track:T2" }]; S.currentUri = null;
+    S.module = "run"; S.deviceId = null; S.tracks = [{ uri: "spotify:track:T2", title: "T2" }]; S.currentUri = null; S.wakeUri = null;
     await T.play("spotify:track:T2");
-    assert.strictEqual(playUrls.length, 2);
-    assert.ok(!playUrls[0].includes("device_id") && playUrls[1].includes("device_id=dev9"), "implicit first, explicit device on retry: " + playUrls.join(" | "));
-    console.log("  ✓ play(): 404 on the implicit attempt retries with an explicit device_id");
+    assert.strictEqual(playUrls.length, 2, "playlist jump + direct, both implicit");
+    assert.ok(!playUrls.some((x) => x.includes("device_id")), "no play call ever names a device: " + playUrls.join(" | "));
+    assert.strictEqual(S.lastSel.via, "wake");
+    assert.strictEqual(S.wakeUri, "spotify:track:T2");
+    assert.ok(S.lastStatus.includes("asleep"), "the wake is explained in the status line: " + S.lastStatus);
+    console.log("  ✓ selection: 404 + zero devices -> wake outcome; device_id never sent");
     pass++;
   }
 
@@ -199,25 +204,26 @@ T.setVerifyDelays([0, 0]);
       const w = installWorld({ current: "spotify:track:other", playing: true });
       seedSel(mod, tracks);
       await T.play(tracks[idx].uri);
-      assert.strictEqual(w.bodies.length, 1, mod + " idx " + idx + ": one direct attempt");
-      assert.deepStrictEqual(w.bodies[0], { uris: [tracks[idx].uri] }, mod + " plays the exact tapped URI");
-      assert.strictEqual(S.lastSel.via, "direct");
+      assert.strictEqual(w.bodies.length, 1, mod + " idx " + idx + ": one playlist-jump attempt");
+      assert.strictEqual(w.bodies[0].context_uri, "spotify:playlist:" + FM.PLAYLISTS[mod].id, mod + " uses its OWN playlist");
+      assert.strictEqual(w.bodies[0].offset.uri, tracks[idx].uri);
+      assert.strictEqual(S.lastSel.via, "playlist");
     }
   }
-  ok("acceptance: first/middle/last track selectable in Train, Run and Yoga (exact-URI direct play)");
+  ok("acceptance: first/middle/last track selectable in Train, Run and Yoga — each with its own playlist context");
 
   // selecting while playing, while paused, and selecting the currently-playing track
   {
     const tracks = [{ uri: "spotify:track:N1", title: "N1" }, { uri: "spotify:track:N2", title: "N2" }];
     let w = installWorld({ current: "spotify:track:N1", playing: true });
     seedSel("train", tracks); await T.play("spotify:track:N2");
-    assert.strictEqual(S.lastSel.via, "direct"); assert.strictEqual(S.currentUri, "spotify:track:N2");
+    assert.strictEqual(S.lastSel.via, "playlist"); assert.strictEqual(S.currentUri, "spotify:track:N2");
     w = installWorld({ current: "spotify:track:N1", playing: false });
     seedSel("train", tracks); await T.play("spotify:track:N2");
-    assert.strictEqual(S.lastSel.via, "direct"); assert.strictEqual(S.lastSel.playing, true);
+    assert.strictEqual(S.lastSel.via, "playlist"); assert.strictEqual(S.lastSel.playing, true);
     w = installWorld({ current: "spotify:track:N1", playing: true });
     seedSel("train", tracks); await T.play("spotify:track:N1");
-    assert.strictEqual(S.lastSel.via, "direct"); assert.strictEqual(w.bodies.length, 1);
+    assert.strictEqual(S.lastSel.via, "playlist"); assert.strictEqual(w.bodies.length, 1);
   }
   ok("acceptance: select while playing, while paused, and the already-playing track");
 
@@ -227,23 +233,22 @@ T.setVerifyDelays([0, 0]);
     const w = installWorld({ current: "spotify:track:OLD", playing: true, onPlay: () => { polls = 0; }, state: () => (++polls < 2 ? "spotify:track:OLD" : "spotify:track:LAG") });
     seedSel("run", [{ uri: "spotify:track:LAG", title: "Lag" }]);
     await T.play("spotify:track:LAG");
-    assert.strictEqual(S.lastSel.via, "direct");
+    assert.strictEqual(S.lastSel.via, "playlist");
     assert.strictEqual(w.bodies.length, 1, "lagging state must not trigger a needless second attempt");
   }
   ok("acceptance: accepted request with lagging playback state confirms via polling (stale state tolerated)");
 
   // accepted, never reflected: direct fallback of the SAME uri confirms
   {
-    let viaCtx = false;
-    const w = installWorld({ current: "spotify:track:OLD", playing: true, onPlay: (body) => { if (body && body.context_uri) viaCtx = true; }, state: () => (viaCtx ? "spotify:track:NV" : "spotify:track:OLD") });
+    let direct = false;
+    const w = installWorld({ current: "spotify:track:OLD", playing: true, onPlay: (body) => { if (body && body.uris) direct = true; }, state: () => (direct ? "spotify:track:NV" : "spotify:track:OLD") });
     seedSel("yoga", [{ uri: "spotify:track:NV", title: "NV" }]);
     await T.play("spotify:track:NV");
-    assert.strictEqual(S.lastSel.via, "context");
+    assert.strictEqual(S.lastSel.via, "direct");
     assert.strictEqual(w.bodies.length, 2);
-    assert.deepStrictEqual(w.bodies[0], { uris: ["spotify:track:NV"] });
-    assert.ok(w.bodies[1].context_uri === "spotify:playlist:1jltX5L6gM6SKfYAuE2sLx" && w.bodies[1].offset.uri === "spotify:track:NV", "second attempt is the yoga playlist jump to the same URI");
+    assert.deepStrictEqual(w.bodies[1], { uris: ["spotify:track:NV"] });
   }
-  ok("acceptance: accepted-but-not-reflected direct play falls back to the playlist jump of the same URI");
+  ok("acceptance: accepted-but-not-reflected playlist jump falls back to direct play of the same URI");
 
   // both attempts fail: clear error, no substitution, no fake success
   {
@@ -254,7 +259,7 @@ T.setVerifyDelays([0, 0]);
     assert.ok(S.lastStatus.includes("Couldn't start") && S.lastStatus.includes("403"), "clear error shown: " + S.lastStatus);
     assert.ok(!w.bodies.some((b) => b && b.context_uri && !b.offset), "no bare playlist start was substituted");
   }
-  ok("acceptance: direct + context both fail -> explicit error, requested track never faked");
+  ok("acceptance: playlist jump + direct both fail -> explicit error, requested track never faked");
 
   // rapid consecutive selections: the LAST tap wins, the superseded one goes silent
   {
@@ -290,7 +295,7 @@ T.setVerifyDelays([0, 0]);
     seedSel("yoga", [{ uri: "spotify:track:TOK", title: "Tok" }]);
     await T.play("spotify:track:TOK");
     assert.strictEqual(playAttempts, 2, "the request was retried after the token refresh");
-    assert.strictEqual(S.lastSel.via, "direct");
+    assert.strictEqual(S.lastSel.via, "playlist");
   }
   ok("acceptance: expired token (401) refreshes silently and the selection completes");
 
