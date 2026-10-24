@@ -176,6 +176,27 @@
     return attempt();
   }
 
+  /* Instant device test: one notification, real Train title/body, fires
+     ~5 s after the tap so the app can be closed first. Deliberately NOT a
+     rotation reminder: fixed test ID outside the reconciler's band and no
+     forgeReminder flag, so reconciliation never cancels or duplicates it.
+     Tapping it routes to Train through the normal listener. */
+  const TEST_ID = 777001;
+  async function testNotification() {
+    const p = plugin();
+    if (!p) return { ok: false, reason: "unavailable" };
+    let perm = await permissionState();
+    if (perm !== "granted") {
+      const settings = getSettings();
+      if (!settings.permAsked) { saveSettings({ permAsked: true }); try { await p.requestPermissions(); } catch (e) { /* denied */ } perm = await permissionState(); }
+      if (perm !== "granted") return { ok: false, reason: perm };
+    }
+    try {
+      await p.schedule({ notifications: [{ id: TEST_ID, title: META.train.title, body: META.train.body, schedule: { at: new Date(Date.now() + 5000), allowWhileIdle: true }, extra: { forgeTest: true, module: "train" } }] });
+      return { ok: true, firesInSec: 5 };
+    } catch (e) { return { ok: false, reason: "error", error: String((e && e.message) || e) }; }
+  }
+
   /* ---------- Settings → 🔔 Reminders view ---------- */
   let rendering = false;
   window.renderReminders = function () {
@@ -195,13 +216,21 @@
       '<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="rmRun" style="width:auto" ' + chk(s.run) + '> <span>Run — Tue &amp; Fri</span></label>' +
       '<label style="display:flex;gap:8px;align-items:center;margin-top:6px"><input type="checkbox" id="rmYoga" style="width:auto" ' + chk(s.yoga) + '> <span>Yoga — Wed &amp; Sat</span></label>' +
       "</div>" +
+      '<button class="btn block" id="rmTest" style="margin-top:14px">🔔 Send a test notification</button>' +
+      '<p class="small" id="rmTestOut" style="margin-top:8px;line-height:1.5"></p>' +
       '<p class="small muted" style="margin-top:12px;line-height:1.5">Sunday is always off. One honest limitation: if a session finishes at the exact moment a reminder fires, Android may already have shown it — pending reminders are always cancelled, but one already on screen can\'t be pulled back.</p>' +
       "</div>" +
       '<button class="btn block" style="margin-top:14px" onclick="show(\'settings\')">‹ Settings</button>' +
-      '<p class="small muted" style="margin-top:10px">The Forge · build U6-1</p>' +
+      '<p class="small muted" style="margin-top:10px">The Forge · build U6-2</p>' +
       "</div>";
     const on = (id, fn) => { const e = document.getElementById(id); if (e) e.addEventListener("change", fn); };
     on("rmMaster", async (e) => { await setEnabled(e.target.checked); window.renderReminders(); });
+    const tb = document.getElementById("rmTest");
+    if (tb) tb.addEventListener("click", async () => {
+      const out = document.getElementById("rmTestOut");
+      const r = await testNotification();
+      if (out) out.textContent = r.ok ? "Test sent — it fires in about 5 seconds. Close the app now and it should still arrive; tap it and Forge should open on Train." : (r.reason === "denied" ? "Android is blocking notifications for The Forge — allow them in Android Settings → Apps → The Forge → Notifications, then try again." : "Couldn't send the test (" + r.reason + ").");
+    });
     on("rmTime", async (e) => { await setTime(e.target.value); window.renderReminders(); });
     on("rmTrain", async (e) => { await setDiscipline("train", e.target.checked); window.renderReminders(); });
     on("rmRun", async (e) => { await setDiscipline("run", e.target.checked); window.renderReminders(); });
@@ -223,7 +252,7 @@
   }
   window.ForgeNotify = {
     ROTATION, META, DEFAULTS, getSettings, saveSettings, parseTime, idFor, completedSet, computeDesired,
-    permissionState, reconcile, setEnabled, setTime, setDiscipline, statusText, route,
+    permissionState, reconcile, setEnabled, setTime, setDiscipline, statusText, route, testNotification, TEST_ID,
     _test: { state },
   };
   if (!window.__FORGE_NOTIFY_MANUAL__) init();
