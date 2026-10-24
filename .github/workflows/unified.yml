@@ -35,6 +35,7 @@ jobs:
       - run: node tests/u4_check.js
       - run: node tests/u5_check.js
       - run: node tests/u5b_check.js
+      - run: node tests/u5c_check.js
 
       - name: Assemble the unified app into www/
         run: node scripts/build-unified.mjs
