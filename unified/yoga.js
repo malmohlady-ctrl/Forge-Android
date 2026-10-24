@@ -287,6 +287,7 @@ const CLIPS={
       key: r.id + "-" + ts, routine: r.id, title: r.title, date: dateKey(), timestamp: ts,
       minutes: Math.round(total / 60), durationSec: Math.round(finElapsed), status: "completed" });
     saveDB();
+    if (window.ForgeNotify) window.ForgeNotify.reconcile("completion");
   }
   function syncYogaControls() {
     const sb = $("ygStartBtn"), pb = $("ygPauseBtn"), sk = $("ygSkipBtn");
