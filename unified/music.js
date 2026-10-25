@@ -469,28 +469,6 @@
         <div style="font-weight:700;margin-bottom:6px">Module playlists</div>
         ${rows}
       </div>
-      <div class="card" style="padding:16px;margin-top:14px">
-        <div style="font-weight:700;margin-bottom:6px">Selection diagnostics — U5C</div>
-        <p class="small muted" style="line-height:1.5;margin:4px 0">Measurement only — nothing here is the finished player. Pick a target DIFFERENT from what's playing in Spotify, then run the probes one at a time. Every answer Spotify gives is printed RAW in the log below. For E, tap a link, watch what Spotify does, come back and tap State.</p>
-        <div id="dgTargets" style="margin:8px 0"></div>
-        <div class="row" style="flex-wrap:wrap;gap:8px">
-          <button class="btn grow" id="dgState">① State + devices</button>
-          <button class="btn grow" id="dgA">A · Direct play</button>
-          <button class="btn grow" id="dgB">B · Playlist jump</button>
-          <button class="btn grow" id="dgC">C · Direct + device</button>
-          <button class="btn grow" id="dgD">D · Transfer, then play</button>
-          <button class="btn grow" id="dgF">F · Queue + next</button>
-          <button class="btn grow" id="dgG">G · Pause, then play</button>
-          <button class="btn grow" id="dgH">H · Play, wait 6s, play again</button>
-          <button class="btn ghost grow" id="dgClear">Clear log</button>
-        </div>
-        <p class="small" style="margin:10px 0 4px">E · Open the target in the Spotify app itself:</p>
-        <div class="row" style="gap:8px">
-          <a class="btn grow" id="dgLinkApp" href="#" style="text-align:center;text-decoration:none">E1 · spotify: link</a>
-          <a class="btn grow" id="dgLinkWeb" href="#" style="text-align:center;text-decoration:none">E2 · open.spotify.com link</a>
-        </div>
-        <pre id="dgLog" style="margin-top:12px;background:#10182b;border:1px solid #2c3a5e;border-radius:10px;padding:10px;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto"></pre>
-      </div>
       <button class="btn block" style="margin-top:14px" onclick="show('settings')">‹ Settings</button>
     </div>`;
     document.getElementById("muSave").addEventListener("click", () => {
@@ -499,22 +477,11 @@
     });
     document.getElementById("muConnect").addEventListener("click", async () => { try { await connect(); } catch (e) { alert("Set the client ID first (below), then Connect."); } });
     document.getElementById("muDisconnect").addEventListener("click", () => { disconnect(); window.renderMusic(); });
-    wireDiagnostics();
   };
 
-  /* ---------- U5C selection diagnostics (throwaway measurement panel) ----------
-     Every button performs ONE mechanism and prints Spotify's RAW answer
-     (HTTP status + body text) to a persistent on-screen log. No verification
-     ladders, no fallbacks, no interpretation — measurement only. */
-  const DIAG_LOG_KEY = "spotify.diag.log";
-  let diagTarget = null;
-  function diagLog(line) {
-    const stamp = new Date().toTimeString().slice(0, 8);
-    const next = ((localStorage.getItem(DIAG_LOG_KEY) || "") + "\n" + stamp + "  " + line).slice(-7000);
-    try { localStorage.setItem(DIAG_LOG_KEY, next); } catch (e) {}
-    const e = document.getElementById("dgLog");
-    if (e) { e.textContent = next.trim(); e.scrollTop = e.scrollHeight; }
-  }
+  /* ---------- Spotify raw API plumbing (U7: the U5C panel is removed;
+     rawApi + diagLoadTargets stay: the player status line uses rawApi
+     and u5c_check.js covers diagLoadTargets) ---------- */
   async function rawApi(method, path, body) {
     let tk = await accessToken();
     const send = (t) => fetch(API + path, { method, headers: { Authorization: "Bearer " + t, ...(body ? { "Content-Type": "application/json" } : {}) }, body: body ? JSON.stringify(body) : undefined });
@@ -524,68 +491,10 @@
     const text = await r.text().catch(() => "");
     return { status: r.status, text: text.slice(0, 200000), note };
   }
-  const dgWait = (ms) => new Promise((res) => setTimeout(res, ms));
-  async function diagNowPlaying(prefix) {
-    try {
-      const r = await rawApi("GET", "/me/player");
-      if (r.status === 204 || !r.text) { diagLog(prefix + " -> Spotify reports NOTHING playing (HTTP " + r.status + ")"); return; }
-      const j = JSON.parse(r.text);
-      const it = j.item;
-      diagLog(prefix + " -> now: " + (it ? "\"" + it.name + "\" (" + it.uri + ")" : "no item") + " · playing=" + !!j.is_playing + " · device=" + (j.device ? j.device.name : "?") + " · context=" + (j.context ? j.context.uri : "none"));
-    } catch (e) { diagLog(prefix + " -> state read failed: " + (e && e.message || e)); }
-  }
   async function diagLoadTargets() {
     const r = await rawApi("GET", "/playlists/" + PLAYLISTS.run.id + "/items?limit=8");
     if (r.status !== 200) throw new Error("playlist read HTTP " + r.status + ": " + r.text.slice(0, 200));
     const j = JSON.parse(r.text);
     return (j.items || []).map((it) => it.track || it.item || it).filter((t) => t && t.uri).map((t) => ({ uri: t.uri, title: t.name, artist: (t.artists || []).map((a) => a.name).join(", ") }));
-  }
-  async function diagDevices() {
-    const r = await rawApi("GET", "/me/player/devices");
-    if (r.status !== 200) { diagLog("devices: HTTP " + r.status + " " + r.text.slice(0, 200)); return []; }
-    const devs = (JSON.parse(r.text).devices) || [];
-    diagLog("DEVICES: HTTP " + r.status + " · " + devs.length + " in list" + (devs.length ? "" : " — Spotify is not active anywhere"));
-    devs.forEach((d) => diagLog("device: \"" + d.name + "\" · type=" + d.type + " · active=" + d.is_active + " · restricted=" + d.is_restricted + " · id=" + d.id));
-    return devs;
-  }
-  function pickPhone(devs) { return devs.filter((d) => d.is_active)[0] || devs.filter((d) => d.type === "Smartphone")[0] || devs[0] || null; }
-  function setDiagTarget(t) {
-    diagTarget = t;
-    const id = t.uri.replace("spotify:track:", "");
-    const a1 = document.getElementById("dgLinkApp"); if (a1) a1.href = "spotify:track:" + id;
-    const a2 = document.getElementById("dgLinkWeb"); if (a2) a2.href = "https://open.spotify.com/track/" + id;
-    diagLog("target: \"" + t.title + "\" — " + t.artist + " (" + t.uri + ")");
-    document.querySelectorAll(".dg-tgt").forEach((b) => { b.style.borderColor = b.dataset.uri === t.uri ? "var(--gold,#d4a72c)" : ""; });
-  }
-  function wireDiagnostics() {
-    const pre = document.getElementById("dgLog");
-    if (!pre) return;
-    pre.textContent = (localStorage.getItem(DIAG_LOG_KEY) || "— log empty —").trim();
-    if (!connected()) { diagLog("not connected — Connect above first, then re-open this screen."); return; }
-    const on = (id, fn) => { const e = document.getElementById(id); if (e) e.addEventListener("click", async () => { try { await fn(); } catch (err) { diagLog("ERROR: " + (err && err.message || err)); } }); };
-    on("dgClear", async () => { localStorage.removeItem(DIAG_LOG_KEY); pre.textContent = "— log cleared —"; });
-    on("dgState", async () => {
-      const r = await rawApi("GET", "/me/player");
-      diagLog("STATE: HTTP " + r.status + r.note + " " + (r.text ? r.text.slice(0, 300) : "(empty body)"));
-      await diagNowPlaying("STATE");
-      await diagDevices();
-    });
-    const needTarget = () => { if (!diagTarget) { diagLog("no target yet — the playlist is still loading or failed; see log above."); return false; } return true; };
-    on("dgA", async () => { if (!needTarget()) return; const r = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("A direct {uris}: HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("A"); });
-    on("dgB", async () => { if (!needTarget()) return; const r = await rawApi("PUT", "/me/player/play", { context_uri: "spotify:playlist:" + PLAYLISTS.run.id, offset: { uri: diagTarget.uri } }); diagLog("B playlist jump {context+offset}: HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("B"); });
-    on("dgC", async () => { if (!needTarget()) return; const devs = await diagDevices(); const d = pickPhone(devs); if (!d) { diagLog("C: no device in the list — open Spotify once and retry."); return; } const r = await rawApi("PUT", "/me/player/play?device_id=" + encodeURIComponent(d.id), { uris: [diagTarget.uri] }); diagLog("C direct + device_id (" + d.name + "): HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("C"); });
-    on("dgD", async () => { if (!needTarget()) return; const devs = await diagDevices(); const d = pickPhone(devs); if (!d) { diagLog("D: no device in the list — open Spotify once and retry."); return; } const t = await rawApi("PUT", "/me/player", { device_ids: [d.id], play: false }); diagLog("D transfer to " + d.name + ": HTTP " + t.status + t.note + " " + (t.text.slice(0, 300) || "(empty body)")); await dgWait(1500); const r = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("D then direct play: HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("D"); });
-    on("dgF", async () => { if (!needTarget()) return; const q = await rawApi("POST", "/me/player/queue?uri=" + encodeURIComponent(diagTarget.uri)); diagLog("F queue add: HTTP " + q.status + q.note + " " + (q.text.slice(0, 300) || "(empty body)")); await dgWait(800); const n = await rawApi("POST", "/me/player/next"); diagLog("F next: HTTP " + n.status + n.note + " " + (n.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("F"); });
-    on("dgG", async () => { if (!needTarget()) return; const pz = await rawApi("PUT", "/me/player/pause"); diagLog("G pause: HTTP " + pz.status + pz.note + " " + (pz.text.slice(0, 300) || "(empty body)")); await dgWait(2000); const r = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("G then direct play: HTTP " + r.status + r.note + " " + (r.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("G"); });
-    on("dgH", async () => { if (!needTarget()) return; const r1 = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("H play #1: HTTP " + r1.status + r1.note + " " + (r1.text.slice(0, 300) || "(empty body)")); await dgWait(6000); await diagDevices(); const r2 = await rawApi("PUT", "/me/player/play", { uris: [diagTarget.uri] }); diagLog("H play #2 (6s later): HTTP " + r2.status + r2.note + " " + (r2.text.slice(0, 300) || "(empty body)")); await dgWait(2500); await diagNowPlaying("H"); });
-    diagLoadTargets().then((tracks) => {
-      const host = document.getElementById("dgTargets");
-      if (host) {
-        host.innerHTML = "";
-        tracks.forEach((t) => { const b = document.createElement("button"); b.className = "btn ghost dg-tgt"; b.dataset.uri = t.uri; b.style.margin = "0 6px 6px 0"; b.textContent = t.title; b.addEventListener("click", () => setDiagTarget(t)); host.appendChild(b); });
-      }
-      if (tracks.length) setDiagTarget(tracks[2] || tracks[0]);
-      diagLog("panel ready — " + tracks.length + " target songs loaded from the Run playlist.");
-    }).catch((e) => diagLog("target load FAILED: " + (e && e.message || e)));
   }
 })();
