@@ -2,7 +2,7 @@ name: Unified Forge — U0 Foundations APK
 
 on:
   push:
-    branches: [u0-foundations, u1-train, u2-run, u3-yoga, u4-import, u5-spike, u5-player, u6-notifications]
+    branches: [u0-foundations, u1-train, u2-run, u3-yoga, u4-import, u5-spike, u5-player, u6-notifications, u7-release]
   workflow_dispatch:
 
 permissions:
@@ -37,6 +37,7 @@ jobs:
       - run: node tests/u5b_check.js
       - run: node tests/u5c_check.js
       - run: node tests/u6_check.js
+      - run: node tests/u7_check.js
 
       - name: Assemble the unified app into www/
         run: node scripts/build-unified.mjs
@@ -51,9 +52,9 @@ jobs:
         working-directory: android
         run: chmod +x gradlew && ./gradlew assembleDebug
 
-      - name: Upload U0 test APK artifact
+      - name: Upload U7 Part A production APK artifact (debug-signed)
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: forge-unified-u0-apk
+          name: forge-u7-part-a-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
