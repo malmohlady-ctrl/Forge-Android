@@ -2,7 +2,8 @@
 /* U5C diagnostics checks: the measurement panel's raw plumbing — rawApi must
    return Spotify's status and body text VERBATIM (no interpretation), retry
    once after a 401 + refresh while flagging that it did, and the target
-   loader must parse the /items shape the panel's buttons depend on. */
+   loader must parse the /items shape. U7 RETIRED the panel UI itself: the
+   probes below now assert the panel is gone while this plumbing stays. */
 const assert = require("assert"), fs = require("fs"), vm = require("vm"), path = require("path");
 global.window = globalThis;
 const lsData = {};
@@ -61,12 +62,12 @@ lsData["spotify.music.tokens"] = JSON.stringify({ access: "tok1", refresh: "ref"
   assert.strictEqual(big[0].uri, "spotify:track:BIG");
   ok("diagLoadTargets: oversized (>8000 char) payload parses — truncation regression closed");
 
-  // U5C-3 probes: the three switch mechanisms must be wired in the panel
+  // U7: the panel UI is gone (its job is done); only the plumbing above remains.
   const src = fs.readFileSync(path.join(__dirname, "..", "unified", "music.js"), "utf8");
-  for (const probe of ["dgF", "dgG", "dgH"]) assert.ok(src.includes('id="' + probe + '"') && src.includes('on("' + probe + '"'), probe + " button + handler wired");
-  assert.ok(src.includes("/me/player/queue?uri="), "F queues the target");
-  assert.ok(src.includes('rawApi("POST", "/me/player/next")'), "F skips to the queued target");
-  ok("U5C-3 probes F (queue+next), G (pause-then-play), H (play-wait-play) wired");
+  for (const gone of ['id="dgF"', 'id="dgG"', 'id="dgH"', "wireDiagnostics", "spotify.diag.log"]) {
+    assert.ok(!src.includes(gone), "U5C panel marker still present: " + gone);
+  }
+  ok("U7: U5C panel UI removed; rawApi + diagLoadTargets plumbing retained");
 
   console.log("U5C tests: " + pass + " passed");
 })().catch((e) => { console.error(e); process.exit(1); });
