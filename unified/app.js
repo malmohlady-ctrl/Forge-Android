@@ -125,7 +125,7 @@ function show(view, origin) {
   if (origin) { el.style.setProperty("--zox", origin.x + "%"); el.style.setProperty("--zoy", origin.y + "%"); }
   el.classList.add("on");
   if (view === "home") el.classList.add("hubview");
-  const titles = {home: "", nutrition: "Nutrition", workouts: "Workouts", progress: "Progress", plan: "Plan", body: "Body", settings: "Settings", train: "Train — Lace Up", run: "Run — Couch to 5K", yoga: "Yoga — Namastay Home", diag: "U0 Diagnostics", music: "Spotify", reminders: "Reminders"};
+  const titles = {home: "", nutrition: "Nutrition", workouts: "Workouts", progress: "Progress", plan: "Plan", body: "Body", settings: "Settings", train: "Train — Lace Up", run: "Run — Couch to 5K", yoga: "Yoga — Namastay Home", music: "Spotify", reminders: "Reminders"};
   const tt = $("#topTitle");
   tt.textContent = titles[view] || "";
   tt.style.display = view === "home" ? "none" : "block";
@@ -133,7 +133,7 @@ function show(view, origin) {
   $("#topBar").style.display = view === "home" ? "none" : "block";
   ({home: renderHome, nutrition: window.renderNutrition, workouts: window.renderWorkouts,
     progress: window.renderProgress, plan: renderPlan, body: renderBody, settings: renderSettings,
-    train: window.renderTrain, run: window.renderRun, yoga: window.renderYoga, import: window.renderImport, diag: window.renderDiag, music: window.renderMusic, reminders: window.renderReminders}[view] || renderHome)();
+    train: window.renderTrain, run: window.renderRun, yoga: window.renderYoga, import: window.renderImport, music: window.renderMusic, reminders: window.renderReminders}[view] || renderHome)();
   window.scrollTo(0, 0);
 }
 function hubGo(view, ev) {
@@ -172,7 +172,7 @@ if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App
 
 /* ---------- unified app: module stubs (engines arrive U1/U2/U3) ---------- */
 const MODULE_INFO = {
-  train: {icon: "🥊", name: "Lace Up", phase: "U1 — Train module", blurb: "The full session, built in here: 29-exercise dumbbell circuit → 3 rounds of called shadow boxing → 6-move core finisher. The cornerman's voice runs on the shared audio core (test him in Diagnostics)."},
+  train: {icon: "🥊", name: "Lace Up", phase: "U1 — Train module", blurb: "The full session, built in here: 29-exercise dumbbell circuit → 3 rounds of called shadow boxing → 6-move core finisher. The cornerman's voice runs on the shared audio core."},
   run: {icon: "🏃", name: "Couch to 5K", phase: "U2 — Run module", blurb: "The 9-week programme with Miles coaching and GPS route tracking, as a native Forge module — no separate app, your runs land straight in Progress."},
   yoga: {icon: "🧘", name: "Namastay Home", phase: "U3 — Yoga module", blurb: "Back Care Basics, Foundations, and Full Reset with the guide voice and 432 Hz chime, built in here."},
 };
@@ -185,7 +185,6 @@ function renderModuleStub() {
     <p style="color:var(--muted,#a8b4d4);line-height:1.55">${m.blurb}</p>
     <p style="line-height:1.55">This module is a placeholder in U0 (Foundations). Its engine is ported in its own phase, behind its own approval — nothing here is a finished workout screen.</p>
     <button class="btn block" onclick="show('workouts')">‹ Back to Workouts</button>
-    <button class="btn block" style="margin-top:8px" onclick="show('diag')">U0 Diagnostics</button>
   </div>`;
 }
 window.renderDiag = function () {
