@@ -58,3 +58,17 @@ jobs:
           name: forge-u7-part-a-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 7
+
+      # U7 Part B: unsigned release build. No signing config exists in
+      # build.gradle by design — signing happens locally after download,
+      # never in CI, and no keystore or password ever enters the repo.
+      - name: Build unsigned release APK (Part B, signed locally after download)
+        working-directory: android
+        run: ./gradlew assembleRelease
+
+      - name: Upload U7 Part B unsigned release APK artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: forge-u7-part-b-unsigned-apk
+          path: android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 7
